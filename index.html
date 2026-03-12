@@ -1415,7 +1415,7 @@ function renderFamily(){
         </div>`;
       }).join('');
       extraSections += `<div style="margin-top:1.4rem">
-        <div style="font-family:'Cinzel',serif;font-size:.65rem;letter-spacing:.14em;text-transform:uppercase;color:var(--steel);margin-bottom:.6rem">Household & Entourage</div>
+        <div style="font-family:'Cinzel',serif;font-size:.65rem;letter-spacing:.14em;text-transform:uppercase;color:var(--steel);margin-bottom:.6rem">Entourage</div>
         <div style="display:flex;flex-wrap:wrap;gap:.6rem">${cards}</div>
       </div>`;
     }
@@ -1928,7 +1928,7 @@ function renderConflicts(){
         </div>
         <div style="display:flex;gap:.5rem;flex-wrap:wrap">
           ${grouped[g].map(r=>`
-          <div style="background:${m.bg};border:1px solid ${m.border}55;border-left:3px solid ${m.border};border-radius:3px;padding:.6rem .9rem;min-width:180px;flex:1;max-width:280px${r.pc?';box-shadow:0 0 8px '+m.border+'44':''}">
+          <div style="background:#000000;border:1px solid ${m.border}55;border-left:3px solid ${m.border};border-radius:3px;padding:.6rem .9rem;min-width:180px;flex:1;max-width:280px${r.pc?';box-shadow:0 0 8px '+m.border+'44':''}">
             <div style="display:flex;align-items:baseline;gap:.4rem">
               <span style="font-size:.7rem;opacity:.7">${tierIcon[r.tier]||''}</span>
               <span style="font-family:'Cinzel',serif;font-size:.82rem;font-weight:${r.pc?'700':'400'};color:${m.nameCol}">${r.name}</span>
@@ -2728,7 +2728,6 @@ function renderEstatesPanel(charName) {
         </div>
       </div>
       <div style="padding:.9rem 1.1rem">
-        ${m.notes&&m.notes!=='Home manor'?`<div style="font-size:.78rem;color:#3d2a0e;font-style:italic;margin-bottom:.6rem;padding:.4rem .6rem;background:rgba(0,0,0,.04);border-left:2px solid var(--parchment-shadow)">${m.notes}</div>`:''}
         ${sparkSection}
         ${m.history.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.78rem">
           <thead><tr style="border-bottom:2px solid var(--parchment-shadow)">
