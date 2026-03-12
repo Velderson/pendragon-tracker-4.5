@@ -1795,7 +1795,7 @@ function renderConflicts(){
       const borderCol = tier==='king'?'#b8902a': tier==='vassal'&&n.highlight?'#b8902a': tier==='baron'?'#4a4a6a': tier==='indep'?'#4a6a4a':'#6a5a3a';
       const bg        = '#000000';
       const nameCol   = tier==='king'?'var(--gold-light)': tier==='vassal'&&n.highlight?'var(--gold-light)': tier==='baron'?'#a0a0d0': tier==='indep'?'#90c090':'#e8c090';
-      const clickAttr = hasKnights ? `onclick="window.vassalExpanded.has('${n.name}')?window.vassalExpanded.delete('${n.name}'):window.vassalExpanded.add('${n.name}');renderConflicts()" style="cursor:pointer;" ` : '';
+      const clickAttr = hasKnights ? `onclick="window.vassalExpanded.has('${n.name}')?window.vassalExpanded.delete('${n.name}'):window.vassalExpanded.add('${n.name}');renderConflicts()" ` : '';
       const expandIndicator = hasKnights ? `<span style="float:right;font-size:.65rem;color:#b8902a;opacity:.7">${isExpanded?'▾':'▸'}</span>` : '';
 
       let knightsHtml = '';
@@ -1811,7 +1811,7 @@ function renderConflicts(){
         </div>`;
       }
 
-      return `<div ${clickAttr}style="background:${bg};border:1px solid ${borderCol};border-left:3px solid ${borderCol};border-radius:3px;padding:.6rem .9rem;min-width:160px;flex:1;max-width:240px${hasKnights?';transition:box-shadow .15s':''}${hasKnights&&!isExpanded?';opacity:.95':''}">
+      return `<div ${clickAttr}style="background:${bg};border:1px solid ${borderCol};border-left:3px solid ${borderCol};border-radius:3px;padding:.6rem .9rem;min-width:160px;flex:1;max-width:240px${hasKnights?';cursor:pointer;transition:box-shadow .15s':''}${hasKnights&&!isExpanded?';opacity:.95':''}">
         <div style="font-family:'Cinzel',serif;font-size:.82rem;font-weight:${n.highlight?'700':'400'};color:${nameCol};line-height:1.2">${expandIndicator}${n.name}</div>
         <div style="font-size:.7rem;color:#9a8a6a;font-style:italic;margin-top:.1rem">${n.role}</div>
         ${tier!=='baron'?`<div style="font-size:.67rem;color:#6a5a4a;margin-top:.1rem">${n.glory} Glory</div>`:''}
