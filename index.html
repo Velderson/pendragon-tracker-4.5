@@ -793,552 +793,359 @@ let familySubTab = 'roster'; // 'tree' or 'roster'
 //  INTERACTIVE FAMILY TREE  (canvas, draggable nodes)
 // ═══════════════════════════════════════════════════════
 
-let ftNodes=[], ftEdges=[], ftAnim=null, ftDrag=null, ftSelected=null;
-let ftTick=0, ftCanvas=null, ftCtx=null, ftDpr=1, ftW=900, ftH=660;
-// Viewport transform
+let ftNodes=[], ftEdges=[], ftCanvas=null, ftCtx=null, ftDpr=1, ftW=900, ftH=660;
 let ftZoom=1, ftPanX=0, ftPanY=0, ftPanning=false, ftPanStart=null;
-// Expanded parent nodes (click to reveal siblings)
-let ftExpanded = new Set();
 
-const BW=82, BH=38; // node box size
+const BW=96, BH=44; // node box size — slightly wider for full names
 
-function ftColor(status,isPC,illegitimate,isSpouse){
-  if(isPC)              return {fill:'#1a0d00',stroke:'#f0c030',text:'#fff0a0',sw:2};
-  if(isSpouse)          return {fill:'#0d0a18',stroke:'#a090d0',text:'#d0c8f0',sw:1.5};
-  if(illegitimate)      return {fill:'#100808',stroke:'#885050',text:'#c09080',sw:1,dash:true};
-  if(status==='dead')   return {fill:'#0d0000',stroke:'#ff6060',text:'#ffaaaa',sw:1.5};
-  if(status==='unknown')return {fill:'#080810',stroke:'#8888cc',text:'#ccccff',sw:1};
-  if(status==='ghost')  return {fill:'#0a0a08',stroke:'#888866',text:'#cccc99',sw:1};
-  return                       {fill:'#0a0800',stroke:'#c8a040',text:'#ffe8a0',sw:1};
+function ftColor(status, isPC, illegitimate, isSpouse){
+  if(isPC)               return {fill:'#000000', stroke:'#f0c030', text:'#fff0a0', sw:2};
+  if(isSpouse)           return {fill:'#000000', stroke:'#a090d0', text:'#d0c8f0', sw:1.5};
+  if(illegitimate)       return {fill:'#000000', stroke:'#885050', text:'#c09080', sw:1, dash:true};
+  if(status==='dead')    return {fill:'#000000', stroke:'#ff6060', text:'#ff9090', sw:1.5};
+  if(status==='unknown') return {fill:'#000000', stroke:'#8888cc', text:'#ccccff', sw:1};
+  if(status==='ghost')   return {fill:'#000000', stroke:'#888866', text:'#cccc99', sw:1};
+  return                        {fill:'#000000', stroke:'#c8a040', text:'#ffe8a0', sw:1};
 }
 
-// Convert screen coords → world coords
-function ftScreen2World(sx,sy){
-  return {x:(sx-ftPanX)/ftZoom, y:(sy-ftPanY)/ftZoom};
+function ftScreen2World(sx, sy){
+  return {x:(sx - ftPanX) / ftZoom, y:(sy - ftPanY) / ftZoom};
 }
 
 function buildFamilyTree(charName){
-  cancelAnimationFrame(ftAnim);
-  ftNodes=[]; ftEdges=[]; ftSelected=null; ftTick=0;
-  ftZoom=1; ftPanX=0; ftPanY=0;
-  const data=TREE_DATA[charName];
+  ftNodes = []; ftEdges = [];
+  ftZoom = 1; ftPanX = 0; ftPanY = 0;
+
+  const data = TREE_DATA[charName];
   if(!data) return;
 
-  // ── Determine which nodes to show ─────────────────────────────
-  // Core: PC, father, mother, spouse(s), children
-  // Expanded: if a parent node is in ftExpanded, also show that parent's siblings
+  // ── Show ALL nodes from all generations ──────────────────────
   const allNodes = data.generations.flat();
-  const byId = id => allNodes.find(n=>n.id===id);
 
-  const pcNode = allNodes.find(n=>n.pc);
-  const fatherNode = allNodes.find(n=>n.isfather);
-  const motherNode = allNodes.find(n=>n.ismother);
-
-  // Always-visible set
-  const coreIds = new Set();
-  if(pcNode) coreIds.add(pcNode.id);
-  if(fatherNode) coreIds.add(fatherNode.id);
-  if(motherNode) coreIds.add(motherNode.id);
-  // Spouses of PC
-  allNodes.filter(n=>n.spouseOf==='pc').forEach(n=>coreIds.add(n.id));
-  // Children of PC (direct parentId===pc), excluding illegitimate
-  allNodes.filter(n=>n.parentId==='pc' && !n.illegitimate).forEach(n=>coreIds.add(n.id));
-
-  // Expanded: siblings of clicked parent
-  ftExpanded.forEach(parentId=>{
-    const parent = byId(parentId);
-    if(!parent) return;
-    // All nodes sharing the same grandparent (siblings)
-    const gpId = parent.parentId;
-    if(gpId){
-      allNodes.filter(n=>n.parentId===gpId).forEach(n=>coreIds.add(n.id));
-      // Also show the grandparent as a ghost anchor
-      coreIds.add(gpId);
-    }
+  // Group by generation index
+  const genMap = new Map();
+  data.generations.forEach((gen, gi) => {
+    gen.forEach(n => genMap.set(n.id, gi));
   });
 
-  // Build visible nodes with generation recalculation
-  // Assign generations: gp=0, parents=1, pc/siblings=2, children=3
-  const genOf = id => {
-    const n = byId(id);
-    if(!n) return 2;
-    if(n.isfather||n.ismother) return 1;
-    if(n.pc||n.spouseOf==='pc') return 2;
-    // Is it a grandparent (parent of father/mother)?
-    const fathGp = fatherNode?.parentId, mothGp = motherNode?.parentId;
-    if(id===fathGp||id===mothGp) return 0;
-    // Is it a sibling of PC (same gen as PC, parentId = father)?
-    if(n.parentId===fatherNode?.id||n.parentId===motherNode?.id) return 2;
-    // Child of PC
-    if(n.parentId==='pc'||n.parentId===pcNode?.id) return 3;
-    // Uncle/aunt (sibling of parent, parentId = grandparent)
-    const fathGpId = fatherNode?.parentId, mothGpId = motherNode?.parentId;
-    if((fathGpId&&n.parentId===fathGpId)||(mothGpId&&n.parentId===mothGpId)) return 1;
-    // Cousin (child of uncle/aunt — one level below uncle)
-    const uncles = allNodes.filter(u=>(fathGpId&&u.parentId===fathGpId)||(mothGpId&&u.parentId===mothGpId));
-    if(uncles.find(u=>u.id===n.parentId)) return 2;
-    return 2;
-  };
+  // ── Determine spouse pairings so they sit side-by-side ───────
+  // Build spouse pairs: map nodeId → partnerId
+  const spouseOf = new Map(); // id → spouseOf value
+  allNodes.forEach(n => { if(n.spouseOf) spouseOf.set(n.id, n.spouseOf); });
 
-  const gc = 4; // max generations
-  const visibleNodes = allNodes.filter(n=>coreIds.has(n.id));
+  // ── Layout: assign x positions per generation ────────────────
+  const HGAP = 116; // horizontal gap between nodes
+  const VGAP = 90;  // vertical gap between generations
 
-  visibleNodes.forEach((n,ni)=>{
-    const gi = genOf(n.id);
-    const genNodes = visibleNodes.filter(x=>genOf(x.id)===gi);
-    const idx = genNodes.indexOf(n);
-    const xBase = ftW*0.1 + (idx/Math.max(genNodes.length-1,1))*ftW*0.8;
-    const yBase = ftH*0.06 + (gi/Math.max(gc-1,1))*ftH*0.86;
-    // Spouse: place next to PC
-    const xOff = n.spouseOf==='pc' ? 110 : (Math.random()-.5)*20;
-    ftNodes.push({
-      id:n.id, label:n.label||'', role:n.role||'',
-      status:n.ghost?'ghost':(n.status||'alive'),
-      age:n.age||'', glory:n.glory||'',
-      pc:!!n.pc, ghost:!!n.ghost, gi,
-      illegitimate:!!n.illegitimate,
-      isSpouse: !!(n.spouseOf==='pc'),
-      expandable: !!(n.isfather||n.ismother),
-      expanded: ftExpanded.has(n.id),
-      x:xBase+xOff, y:yBase+(Math.random()-.5)*15,
-      vx:0,vy:0,pinned:false,
-      spouseOf:n.spouseOf||null, parentId:n.parentId||null,
-      isfather:!!n.isfather, ismother:!!n.ismother,
+  // For each generation, order nodes: pair spouses together
+  const genGroups = data.generations.map((gen, gi) => {
+    const placed = new Set();
+    const ordered = [];
+    gen.forEach(n => {
+      if(placed.has(n.id)) return;
+      ordered.push(n);
+      placed.add(n.id);
+      // If this node has a spouse in the same generation, place them next
+      const partnerId = spouseOf.get(n.id) || [...spouseOf.entries()].find(([k,v])=>v===n.id&&gen.find(g=>g.id===k))?.[0];
+      if(partnerId) {
+        const partner = gen.find(g => g.id === partnerId);
+        if(partner && !placed.has(partnerId)) {
+          ordered.push(partner);
+          placed.add(partnerId);
+        }
+      }
+    });
+    return {gi, nodes: ordered};
+  });
+
+  // Compute canvas width needed
+  const maxNodesInRow = Math.max(...genGroups.map(g => g.nodes.length));
+  const totalW = Math.max(ftW, maxNodesInRow * HGAP + 120);
+  const totalH = Math.max(ftH, genGroups.length * VGAP + 100);
+
+  // Store world dimensions for panning limits
+  ftNodes._worldW = totalW;
+  ftNodes._worldH = totalH;
+
+  // Place nodes
+  genGroups.forEach(({gi, nodes}) => {
+    const rowW = nodes.length * HGAP;
+    const startX = totalW / 2 - rowW / 2 + HGAP / 2;
+    const y = 60 + gi * VGAP;
+    nodes.forEach((n, idx) => {
+      ftNodes.push({
+        id: n.id,
+        label: n.label || '',
+        role: n.role || '',
+        status: n.ghost ? 'ghost' : (n.status || 'alive'),
+        age: n.age || '',
+        glory: n.glory || '',
+        pc: !!n.pc,
+        ghost: !!n.ghost,
+        illegitimate: !!n.illegitimate,
+        isSpouse: !!(n.spouseOf),
+        gi,
+        x: startX + idx * HGAP,
+        y,
+        parentId: n.parentId || null,
+        spouseOf: n.spouseOf || null,
+        isfather: !!n.isfather,
+        ismother: !!n.ismother,
+      });
     });
   });
 
-  const nodeById=id=>ftNodes.find(n=>n.id===id);
+  // ── Build edges ───────────────────────────────────────────────
+  const nodeById = id => ftNodes.find(n => n.id === id);
 
-  ftNodes.forEach(n=>{
-    if(n.parentId&&nodeById(n.parentId)) ftEdges.push({a:n.parentId,b:n.id,type:'parent',illegitimate:n.illegitimate});
-    if(n.spouseOf&&nodeById(n.spouseOf)&&!ftEdges.find(e=>e.type==='spouse'&&((e.a===n.id&&e.b===n.spouseOf)||(e.a===n.spouseOf&&e.b===n.id))))
-      ftEdges.push({a:n.spouseOf,b:n.id,type:'spouse'});
+  ftNodes.forEach(n => {
+    if(n.parentId && nodeById(n.parentId)){
+      ftEdges.push({a: n.parentId, b: n.id, type: 'parent', illegitimate: n.illegitimate});
+    }
+    if(n.spouseOf && nodeById(n.spouseOf)){
+      const already = ftEdges.find(e => e.type==='spouse' && ((e.a===n.id&&e.b===n.spouseOf)||(e.a===n.spouseOf&&e.b===n.id)));
+      if(!already) ftEdges.push({a: n.spouseOf, b: n.id, type: 'spouse'});
+    }
   });
 
-  // Father-PC edge & father-mother couple
-  const fid=ftNodes.find(n=>n.isfather)?.id;
-  const mid=ftNodes.find(n=>n.ismother)?.id;
-  const pid=ftNodes.find(n=>n.pc)?.id;
-  if(fid&&pid&&!ftEdges.find(e=>e.a===fid&&e.b===pid)) ftEdges.push({a:fid,b:pid,type:'parent'});
-  if(fid&&mid&&!ftEdges.find(e=>e.type==='couple')) ftEdges.push({a:fid,b:mid,type:'couple'});
+  // father-mother couple edge
+  const fid = ftNodes.find(n=>n.isfather)?.id;
+  const mid = ftNodes.find(n=>n.ismother)?.id;
+  if(fid && mid && !ftEdges.find(e=>e.type==='couple')){
+    ftEdges.push({a: fid, b: mid, type: 'couple'});
+  }
 
-  // Sibling ordering
-  ftNodes.forEach(n=>{ n.sibRank=null; n.sibGroup=null; n.sibTotal=0; });
-  const parentIds=[...new Set(ftEdges.filter(e=>e.type==='parent').map(e=>e.a))];
-  parentIds.forEach(pid=>{
-    const kids=ftEdges.filter(e=>e.type==='parent'&&e.a===pid).map(e=>ftNodes.find(n=>n.id===e.b)).filter(Boolean);
-    if(kids.length<2) return;
-    kids.sort((a,b)=>(parseInt(b.age)||0)-(parseInt(a.age)||0));
-    kids.forEach((k,i)=>{k.sibRank=i;k.sibGroup=pid;k.sibTotal=kids.length;});
-  });
+  // Centre initial view on the PC node
+  const pcNode = ftNodes.find(n => n.pc);
+  if(pcNode){
+    ftPanX = ftW/2 - pcNode.x * ftZoom;
+    ftPanY = ftH/2 - pcNode.y * ftZoom - 60;
+  }
 
   ftDrawTree();
-  ftRunSim();
-}
-
-function ftRunSim(){
-  ftTick=0;
-  // Build node lookup map once per sim run (nodes don't change mid-sim)
-  const _simNodeMap = new Map(ftNodes.map(n=>[n.id,n]));
-  function step(){
-    ftTick++;
-    const cool=Math.max(0.02,1-ftTick/350);
-    ftNodes.forEach(n=>{n.fx=0;n.fy=0;});
-
-    // Base repulsion — stronger when something is selected so siblings spread
-    const baseRep = ftSelected ? 5500 : 3800;
-    for(let i=0;i<ftNodes.length;i++) for(let j=i+1;j<ftNodes.length;j++){
-      const a=ftNodes[i],b=ftNodes[j];
-      const dx=b.x-a.x,dy=b.y-a.y,d=Math.max(1,Math.hypot(dx,dy));
-      // Extra push between same-generation nodes when close
-      const sameGen = a.gi===b.gi;
-      const rep = sameGen ? baseRep*1.4 : baseRep;
-      const s=rep/(d*d);
-      a.fx-=dx/d*s; a.fy-=dy/d*s; b.fx+=dx/d*s; b.fy+=dy/d*s;
-    }
-
-    // Strong child separation: find all direct children of selected node and push apart
-    if(ftSelected){
-      // gather children of selected node — use Set for O(1) lookup
-      const childIdSet = new Set(ftEdges
-        .filter(e=>e.type==='parent'&&e.a===ftSelected.id)
-        .map(e=>e.b));
-      const children = ftNodes.filter(n=>childIdSet.has(n.id));
-      // push children apart from each other with strong force
-      for(let i=0;i<children.length;i++) for(let j=i+1;j<children.length;j++){
-        const a=children[i],b=children[j];
-        const dx=b.x-a.x,dy=b.y-a.y,d=Math.max(1,Math.hypot(dx,dy));
-        const minDist=BW*2.2;
-        if(d<minDist){
-          const push=(minDist-d)*0.9;
-          a.fx-=dx/d*push; a.fy-=dy/d*push*0.1;
-          b.fx+=dx/d*push; b.fy+=dy/d*push*0.1;
-        }
-      }
-      // also push all same-gen nodes apart (gentler)
-      const selGen=ftSelected.gi+1; // children's generation
-      const genNodes=ftNodes.filter(n=>n.gi===selGen);
-      for(let i=0;i<genNodes.length;i++) for(let j=i+1;j<genNodes.length;j++){
-        const a=genNodes[i],b=genNodes[j];
-        const dx=b.x-a.x,dy=b.y-a.y,d=Math.max(1,Math.hypot(dx,dy));
-        if(d<BW*1.8){
-          const push=(BW*1.8-d)*0.4;
-          a.fx-=dx/d*push; b.fx+=dx/d*push;
-        }
-      }
-    }
-
-    ftEdges.forEach(e=>{
-      const a=_simNodeMap.get(e.a),b=_simNodeMap.get(e.b);
-      if(!a||!b) return;
-      const dx=b.x-a.x,dy=b.y-a.y,d=Math.max(1,Math.hypot(dx,dy));
-      const ideal=e.type==='spouse'||e.type==='couple'?95:140;
-      const f=(d-ideal)*0.045;
-      a.fx+=dx/d*f; a.fy+=dy/d*f; b.fx-=dx/d*f; b.fy-=dy/d*f;
-    });
-
-    // Use reduce instead of spread+Math.max (avoids stack overflow risk on large arrays)
-    const gc=ftNodes.reduce((m,n)=>n.gi>m?n.gi:m,0)+1;
-    ftNodes.forEach(n=>{
-      const ty=ftH*0.06+(n.gi/Math.max(gc-1,1))*ftH*0.86;
-      n.fy+=(ty-n.y)*0.14;
-      n.fx+=(ftW/2-n.x)*0.004;
-    });
-
-    // Sibling ordering (groups precomputed outside step)
-    _sibGroups.forEach(kids=>{
-      if(kids.length<2) return;
-      const cx=kids.reduce((s,k)=>s+k.x,0)/kids.length;
-      let minX=kids[0].x,maxX=kids[0].x;
-      for(let ki=1;ki<kids.length;ki++){if(kids[ki].x<minX)minX=kids[ki].x;if(kids[ki].x>maxX)maxX=kids[ki].x;}
-      const spacing=Math.max(BW*1.35,(maxX-minX)/(kids.length-1)||BW*1.35);
-      const totalW=(kids.length-1)*spacing;
-      kids.forEach((k,i)=>{k.fx+=(cx-totalW/2+i*spacing-k.x)*0.18;});
-    });
-
-    ftNodes.forEach(n=>{
-      if(n.pinned||ftDrag?.node===n) return;
-      n.vx=(n.vx+n.fx)*0.65*cool; n.vy=(n.vy+n.fy)*0.65*cool;
-      n.x=Math.max(60,Math.min(ftW-60,n.x+n.vx));
-      n.y=Math.max(25,Math.min(ftH-25,n.y+n.vy));
-    });
-
-    ftDrawTree();
-    if(ftTick<400) ftAnim=requestAnimationFrame(step);
-  }
-  // Precompute sibling groups once (they don't change during sim)
-  const _sibGroupMap = new Map();
-  ftNodes.forEach(n=>{
-    if(!n.sibGroup) return;
-    if(!_sibGroupMap.has(n.sibGroup)) _sibGroupMap.set(n.sibGroup,[]);
-    _sibGroupMap.get(n.sibGroup).push(n);
-  });
-  const _sibGroups = [..._sibGroupMap.values()].map(g=>g.slice().sort((a,b)=>a.sibRank-b.sibRank));
-  ftAnim=requestAnimationFrame(step);
 }
 
 function ftDrawTree(){
   if(!ftCtx) return;
-  const ctx=ftCtx;
-  ctx.clearRect(0,0,ftW*ftDpr,ftH*ftDpr);
+  const ctx = ftCtx;
+  ctx.clearRect(0, 0, ftW * ftDpr, ftH * ftDpr);
 
   // Background
-  ctx.fillStyle='#000000'; ctx.fillRect(0,0,ftW*ftDpr,ftH*ftDpr);
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, ftW * ftDpr, ftH * ftDpr);
 
   ctx.save();
-  ctx.scale(ftDpr,ftDpr);
-  // Apply pan+zoom
-  ctx.translate(ftPanX,ftPanY);
-  ctx.scale(ftZoom,ftZoom);
+  ctx.scale(ftDpr, ftDpr);
+  ctx.translate(ftPanX, ftPanY);
+  ctx.scale(ftZoom, ftZoom);
 
-  // ── Edges ──
-  // Build a fast id→node map once per draw call instead of O(n) find() per edge
-  const _nodeMap = new Map(ftNodes.map(n=>[n.id,n]));
-  ftEdges.forEach(e=>{
-    const a=_nodeMap.get(e.a),b=_nodeMap.get(e.b);
-    if(!a||!b) return;
-    const sel=ftSelected&&(ftSelected.id===a.id||ftSelected.id===b.id);
-    const dim=ftSelected&&!sel;
-    ctx.globalAlpha=dim?0.12:sel?0.95:0.55;
-    if(e.type==='spouse'||e.type==='couple'){
-      ctx.strokeStyle='#b8962a'; ctx.lineWidth=(sel?2:1.2)/ftZoom; ctx.setLineDash([4/ftZoom,3/ftZoom]);
-      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+  const nodeMap = new Map(ftNodes.map(n => [n.id, n]));
+
+  // ── Draw edges ────────────────────────────────────────────────
+  ftEdges.forEach(e => {
+    const a = nodeMap.get(e.a), b = nodeMap.get(e.b);
+    if(!a || !b) return;
+
+    ctx.globalAlpha = 0.7;
+
+    if(e.type === 'spouse' || e.type === 'couple'){
+      ctx.strokeStyle = '#b8962a';
+      ctx.lineWidth = 1.2 / ftZoom;
+      ctx.setLineDash([4/ftZoom, 3/ftZoom]);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
       ctx.setLineDash([]);
     } else {
-      const my=(a.y+b.y)/2;
-      ctx.strokeStyle=sel?'#d4a017':'#5a4010'; ctx.lineWidth=(sel?1.8:1)/ftZoom;
+      // Elbow connector: down from parent, horizontal, up to child
+      const my = (a.y + BH/2 + b.y - BH/2) / 2;
+      ctx.strokeStyle = e.illegitimate ? '#885050' : '#5a4010';
+      ctx.lineWidth = 1 / ftZoom;
+      if(e.illegitimate) ctx.setLineDash([3/ftZoom, 2/ftZoom]);
       ctx.beginPath();
-      ctx.moveTo(a.x,a.y+BH/2); ctx.lineTo(a.x,my);
-      ctx.lineTo(b.x,my);        ctx.lineTo(b.x,b.y-BH/2);
+      ctx.moveTo(a.x, a.y + BH/2);
+      ctx.lineTo(a.x, my);
+      ctx.lineTo(b.x, my);
+      ctx.lineTo(b.x, b.y - BH/2);
       ctx.stroke();
+      ctx.setLineDash([]);
     }
+    ctx.globalAlpha = 1;
   });
-  ctx.globalAlpha=1;
 
-  // ── Nodes ──
-  // Precompute which nodes are connected to selected (avoids O(edges) per node)
-  const _connectedIds = ftSelected
-    ? new Set(ftEdges.flatMap(e=>(e.a===ftSelected.id||e.b===ftSelected.id)?[e.a,e.b]:[]))
-    : null;
-  ftNodes.forEach(n=>{
-    const col=ftColor(n.status,n.pc,n.illegitimate,n.isSpouse);
-    const sel=ftSelected&&ftSelected.id===n.id;
-    const conn=_connectedIds&&_connectedIds.has(n.id);
-    const dim=ftSelected&&!sel&&!conn;
-    ctx.globalAlpha=dim?0.4:n.ghost?0.75:1;
+  // ── Draw nodes ────────────────────────────────────────────────
+  ftNodes.forEach(n => {
+    const col = ftColor(n.status, n.pc, n.illegitimate, n.isSpouse);
+    const nx = n.x - BW/2, ny = n.y - BH/2;
 
-    const nx=n.x-BW/2, ny=n.y-BH/2;
+    ctx.globalAlpha = n.ghost ? 0.55 : 1;
 
-    // Shadow for depth
-    if(!dim&&!n.ghost){
-      ctx.shadowColor='rgba(0,0,0,0.6)'; ctx.shadowBlur=4/ftZoom; ctx.shadowOffsetY=2/ftZoom;
-    }
-    ctx.fillStyle=col.fill;
-    ctx.strokeStyle=sel?'#ffd700':col.stroke;
-    ctx.lineWidth=(sel?2:col.sw)/ftZoom;
-    // Dashed border for illegitimate
-    if(col.dash) ctx.setLineDash([3/ftZoom,2/ftZoom]);
-    ctx.beginPath(); ctx.roundRect(nx,ny,BW,BH,3); ctx.fill(); ctx.stroke();
+    // Box fill (always black)
+    ctx.fillStyle = col.fill;
+    ctx.strokeStyle = col.stroke;
+    ctx.lineWidth = col.sw / ftZoom;
+    if(col.dash) ctx.setLineDash([3/ftZoom, 2/ftZoom]);
+    ctx.beginPath(); ctx.roundRect(nx, ny, BW, BH, 3);
+    ctx.fill(); ctx.stroke();
     ctx.setLineDash([]);
-    ctx.shadowColor='transparent'; ctx.shadowBlur=0; ctx.shadowOffsetY=0;
 
-    // Dead X
-    if(n.status==='dead'&&!n.ghost){
-      ctx.save(); ctx.globalAlpha=(dim?0.35:1)*0.18;
-      ctx.strokeStyle='#993333'; ctx.lineWidth=0.7/ftZoom;
-      ctx.beginPath(); ctx.moveTo(nx+3,ny+3); ctx.lineTo(nx+BW-3,ny+BH-3); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(nx+BW-3,ny+3); ctx.lineTo(nx+3,ny+BH-3); ctx.stroke();
-      ctx.restore();
-    }
-
-    // Expand indicator on parent nodes (▸ = click to show family)
-    if(n.expandable){
+    // Dead strikethrough
+    if(n.status === 'dead' && !n.ghost){
       ctx.save();
-      ctx.font=`bold ${7/ftZoom}px sans-serif`;
-      ctx.fillStyle = n.expanded ? '#80c080' : '#c0a040';
-      ctx.globalAlpha=(dim?0.4:1)*0.9;
-      ctx.textAlign='left';
-      ctx.fillText(n.expanded?'▾':'▸', nx+2, ny+9);
+      ctx.globalAlpha = 0.25;
+      ctx.strokeStyle = '#cc3333';
+      ctx.lineWidth = 0.7 / ftZoom;
+      ctx.beginPath(); ctx.moveTo(nx+3, ny+3); ctx.lineTo(nx+BW-3, ny+BH-3); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(nx+BW-3, ny+3); ctx.lineTo(nx+3, ny+BH-3); ctx.stroke();
       ctx.restore();
     }
 
     // PC star
     if(n.pc){
-      ctx.font=`bold ${10/ftZoom}px serif`;
-      ctx.fillStyle='#ffd700'; ctx.textAlign='right';
-      ctx.fillText('★',nx+BW-3,ny+11);
+      ctx.font = `bold ${10/ftZoom}px serif`;
+      ctx.fillStyle = '#ffd700'; ctx.textAlign = 'right';
+      ctx.globalAlpha = 1;
+      ctx.fillText('★', nx+BW-3, ny+11);
     }
 
-    // Text — scale font with zoom so it stays crisp
-    const fScale=1/ftZoom;
-    ctx.textAlign='center';
-    ctx.globalAlpha=dim?0.4:n.ghost?0.75:1;
+    // Text
+    const fs = 1 / ftZoom;
+    ctx.textAlign = 'center';
+    ctx.globalAlpha = n.ghost ? 0.6 : 1;
 
-    const nameLines=n.label.split('\n');
-    if(nameLines.length>1){
-      ctx.font=`${7.5*fScale}px Cinzel,serif`; ctx.fillStyle=col.text;
-      ctx.fillText(nameLines[0],n.x,ny+12); ctx.fillText(nameLines[1]||'',n.x,ny+22);
-    } else {
-      // Name
-      ctx.font=`${n.pc?'bold ':''  }${9*fScale}px Cinzel,serif`; ctx.fillStyle=col.text;
-      ctx.fillText(n.label,n.x,ny+13);
-      // Role
-      if(n.role&&!n.ghost){
-        ctx.font=`italic ${7*fScale}px serif`;
-        ctx.globalAlpha=(dim?0.4:1)*1.0;   ctx.fillStyle=col.text;
-        ctx.fillText(n.role.split('·')[0].trim().slice(0,20),n.x,ny+23);
-      }
-      // Age/glory
-      const sub=[n.age?'Age '+n.age:'',n.glory?'✦'+n.glory:''].filter(Boolean).join('  ');
-      if(sub){
-        ctx.font=`${6*fScale}px serif`;
-        ctx.globalAlpha=(dim?0.4:1)*0.85;  ctx.fillStyle=col.text;
-        ctx.fillText(sub,n.x,ny+33);
-      }
+    // Name
+    ctx.font = `${n.pc ? 'bold ' : ''}${9*fs}px Cinzel,serif`;
+    ctx.fillStyle = col.text;
+    ctx.fillText(n.label, n.x, ny + 14);
+
+    // Role (first segment only, truncated)
+    if(n.role && !n.ghost){
+      ctx.font = `italic ${7*fs}px serif`;
+      ctx.globalAlpha = n.ghost ? 0.5 : 0.85;
+      ctx.fillStyle = col.text;
+      ctx.fillText(n.role.split('·')[0].trim().slice(0, 22), n.x, ny + 24);
     }
+
+    // Age / glory
+    const sub = [n.age ? 'Age '+n.age : '', n.glory ? '✦'+n.glory : ''].filter(Boolean).join('  ');
+    if(sub){
+      ctx.font = `${6*fs}px serif`;
+      ctx.globalAlpha = 0.7;
+      ctx.fillStyle = col.text;
+      ctx.fillText(sub, n.x, ny + 35);
+    }
+
+    ctx.globalAlpha = 1;
   });
 
-  ctx.restore(); // end zoom/pan transform
+  ctx.restore();
 
-  // ── Tooltip — drawn in screen space (outside zoom transform) ──
-  if(ftSelected){
-    ctx.save(); ctx.scale(ftDpr,ftDpr);
-    const n=ftSelected, col=ftColor(n.status,n.pc,n.illegitimate,n.isSpouse);
-    // Compute screen position of node
-    const sx=n.x*ftZoom+ftPanX, sy=n.y*ftZoom+ftPanY;
-    const lines=[
-      n.label,
-      n.role||'',
-      n.age?'Age '+n.age:'',
-      n.glory?'Glory '+n.glory:'',
-      n.status==='dead'?'† Deceased':''
-    ].filter(Boolean);
-    const pw=160,lh=15,pad=9,ph=lines.length*lh+pad*2;
-    const px=Math.min(ftW-pw-8,Math.max(8,sx-pw/2));
-    const py=Math.min(ftH-ph-8,Math.max(8,sy+(BH/2)*ftZoom+6));
-    ctx.globalAlpha=0.95;
-    ctx.fillStyle='#1a1005'; ctx.strokeStyle=col.stroke; ctx.lineWidth=1.5;
-    ctx.shadowColor='rgba(0,0,0,0.7)'; ctx.shadowBlur=8;
-    ctx.beginPath(); ctx.roundRect(px,py,pw,ph,4); ctx.fill(); ctx.stroke();
-    ctx.shadowBlur=0;
-    lines.forEach((l,i)=>{
-      ctx.font=i===0?'bold 10px Cinzel,serif':'8.5px serif';
-      ctx.fillStyle=col.text; ctx.textAlign='left';
-      ctx.globalAlpha=i===0?0.98:0.8;
-      ctx.fillText(l,px+pad,py+pad+11+i*lh);
-    });
-    ctx.restore();
-  }
-
-  // ── Zoom indicator ──
-  ctx.save(); ctx.scale(ftDpr,ftDpr);
-  ctx.font='9px serif'; ctx.fillStyle='rgba(180,160,100,0.45)';
-  ctx.textAlign='right';
-  ctx.fillText(Math.round(ftZoom*100)+'%', ftW-8, ftH-6);
+  // Zoom % indicator
+  ctx.save(); ctx.scale(ftDpr, ftDpr);
+  ctx.font = '9px serif';
+  ctx.fillStyle = 'rgba(180,160,100,0.45)';
+  ctx.textAlign = 'right';
+  ctx.fillText(Math.round(ftZoom*100)+'%', ftW - 8, ftH - 6);
   ctx.restore();
 }
 
 function ftZoomBy(delta, cx, cy){
-  // cx,cy: zoom center in screen coords
-  const oldZoom=ftZoom;
-  ftZoom=Math.max(0.3,Math.min(3.5,ftZoom*delta));
-  // Adjust pan so zoom center stays fixed
-  const wx=cx===undefined?ftW/2:cx;
-  const wy=cy===undefined?ftH/2:cy;
-  ftPanX=wx-(wx-ftPanX)*(ftZoom/oldZoom);
-  ftPanY=wy-(wy-ftPanY)*(ftZoom/oldZoom);
+  const oldZoom = ftZoom;
+  ftZoom = Math.max(0.2, Math.min(4, ftZoom * delta));
+  const wx = cx === undefined ? ftW/2 : cx;
+  const wy = cy === undefined ? ftH/2 : cy;
+  ftPanX = wx - (wx - ftPanX) * (ftZoom / oldZoom);
+  ftPanY = wy - (wy - ftPanY) * (ftZoom / oldZoom);
   ftDrawTree();
 }
 
 function ftResetView(){
-  ftZoom=1; ftPanX=0; ftPanY=0; ftDrawTree();
+  ftZoom = 1; ftPanX = 0; ftPanY = 0;
+  // Re-centre on PC node
+  const pcNode = ftNodes.find(n => n.pc);
+  if(pcNode){ ftPanX = ftW/2 - pcNode.x; ftPanY = ftH/2 - pcNode.y - 60; }
+  ftDrawTree();
 }
 
 function initFamilyTreeCanvas(charName){
-  ftCanvas=document.getElementById('familyTreeCanvas');
+  ftCanvas = document.getElementById('familyTreeCanvas');
   if(!ftCanvas) return;
-  const cont=ftCanvas.parentElement;
-  ftDpr=window.devicePixelRatio||1;
-  ftW=cont.clientWidth||900;
-  ftH=Math.max(580,Math.round(ftW*0.6));
-  ftCanvas.width=ftW*ftDpr; ftCanvas.height=ftH*ftDpr;
-  ftCanvas.style.width=ftW+'px'; ftCanvas.style.height=ftH+'px';
-  ftCtx=ftCanvas.getContext('2d');
+  const cont = ftCanvas.parentElement;
+  ftDpr = window.devicePixelRatio || 1;
+  ftW = cont.clientWidth || 900;
+  ftH = Math.max(600, Math.round(ftW * 0.65));
+  ftCanvas.width = ftW * ftDpr; ftCanvas.height = ftH * ftDpr;
+  ftCanvas.style.width = ftW + 'px'; ftCanvas.style.height = ftH + 'px';
+  ftCtx = ftCanvas.getContext('2d');
 
-  // Inject zoom controls above canvas if not already there
+  // Zoom controls
   if(!document.getElementById('ftZoomControls')){
-    const bar=document.createElement('div');
-    bar.id='ftZoomControls';
-    bar.style.cssText='display:flex;gap:6px;align-items:center;padding:6px 10px;background:#0a0a0a;border-bottom:1px solid #333;';
-    bar.innerHTML=`
-      <button onclick="ftZoomBy(1.25)" title="Zoom in" style="background:#111;border:1px solid #555;color:#eee;width:28px;height:28px;border-radius:3px;cursor:pointer;font-size:15px;line-height:1;transition:background .1s">+</button>
-      <button onclick="ftZoomBy(0.8)"  title="Zoom out" style="background:#111;border:1px solid #555;color:#eee;width:28px;height:28px;border-radius:3px;cursor:pointer;font-size:15px;line-height:1;transition:background .1s">−</button>
-      <button onclick="ftResetView()"  title="Reset view" style="background:#111;border:1px solid #555;color:#eee;padding:0 10px;height:28px;border-radius:3px;cursor:pointer;font-size:10px;font-family:Cinzel,serif;letter-spacing:.05em;transition:background .1s">Reset</button>
-      <span style="font-size:9px;color:#888;font-family:serif;margin-left:6px">Scroll to zoom · Drag empty space to pan · Drag nodes to move · Dbl-click to unpin</span>`;
+    const bar = document.createElement('div');
+    bar.id = 'ftZoomControls';
+    bar.style.cssText = 'display:flex;gap:6px;align-items:center;padding:6px 10px;background:#0a0a0a;border-bottom:1px solid #333;';
+    bar.innerHTML = `
+      <button onclick="ftZoomBy(1.25)" title="Zoom in"  style="background:#111;border:1px solid #555;color:#eee;width:28px;height:28px;border-radius:3px;cursor:pointer;font-size:15px;line-height:1">+</button>
+      <button onclick="ftZoomBy(0.8)"  title="Zoom out" style="background:#111;border:1px solid #555;color:#eee;width:28px;height:28px;border-radius:3px;cursor:pointer;font-size:15px;line-height:1">−</button>
+      <button onclick="ftResetView()"  title="Reset"    style="background:#111;border:1px solid #555;color:#eee;padding:0 10px;height:28px;border-radius:3px;cursor:pointer;font-size:10px;font-family:Cinzel,serif;letter-spacing:.05em">Reset</button>
+      <span style="font-size:9px;color:#888;font-family:serif;margin-left:6px">Scroll to zoom · Drag to pan</span>`;
     cont.insertBefore(bar, ftCanvas);
   }
 
   buildFamilyTree(charName);
 
-  // ── Coordinate helpers ──
-  function scrPos(e){
-    const r=ftCanvas.getBoundingClientRect();
-    const cl=e.touches?e.touches[0]:e;
-    return {x:(cl.clientX-r.left)*(ftW/r.width), y:(cl.clientY-r.top)*(ftH/r.height)};
-  }
-  function worldPos(e){ const s=scrPos(e); return ftScreen2World(s.x,s.y); }
-  function hitNode(wx,wy){ return ftNodes.slice().reverse().find(n=>Math.abs(n.x-wx)<BW/2+2&&Math.abs(n.y-wy)<BH/2+2); }
-
-  // ── Scroll to zoom ──
-  ftCanvas.addEventListener('wheel', e=>{
+  // ── Scroll to zoom ────────────────────────────────────────────
+  ftCanvas.addEventListener('wheel', e => {
     e.preventDefault();
-    const {x,y}=scrPos(e);
-    ftZoomBy(e.deltaY<0?1.12:1/1.12, x, y);
-  },{passive:false});
+    const r = ftCanvas.getBoundingClientRect();
+    const x = (e.clientX - r.left) * (ftW / r.width);
+    const y = (e.clientY - r.top)  * (ftH / r.height);
+    ftZoomBy(e.deltaY < 0 ? 1.12 : 1/1.12, x, y);
+  }, {passive: false});
 
-  // ── Mouse ──
-  let mouseBtn=0, _mouseDownPos=null;
-  ftCanvas.addEventListener('mousedown', e=>{
-    mouseBtn=e.button;
-    const {x,y}=scrPos(e);
-    _mouseDownPos={x,y};
-    if(e.button===1||e.button===2){ // middle or right drag = pan
-      ftPanning=true; ftPanStart={x:x-ftPanX, y:y-ftPanY};
-      ftCanvas.style.cursor='move'; e.preventDefault(); return;
-    }
-    const {x:wx,y:wy}=ftScreen2World(x,y);
-    const n=hitNode(wx,wy);
-    if(n){
-      ftDrag={node:n,ox:wx-n.x,oy:wy-n.y};
-      ftSelected=n; ftCanvas.style.cursor='grabbing';
-      ftRunSim(); // restart sim so siblings spread apart
-    } else {
-      // left-click on empty space = pan (always, easier than middle-click)
-      ftPanning=true; ftPanStart={x:x-ftPanX, y:y-ftPanY};
-      ftCanvas.style.cursor='move';
-      const hadSel=!!ftSelected;
-      ftSelected=null;
-      if(hadSel){ ftRunSim(); } // re-settle when deselected
-    }
+  // ── Mouse pan ─────────────────────────────────────────────────
+  ftCanvas.addEventListener('mousedown', e => {
+    ftPanning = true;
+    ftPanStart = {x: e.clientX - ftPanX, y: e.clientY - ftPanY};
+    ftCanvas.style.cursor = 'grabbing';
+  });
+  ftCanvas.addEventListener('mousemove', e => {
+    if(!ftPanning) return;
+    ftPanX = e.clientX - ftPanStart.x;
+    ftPanY = e.clientY - ftPanStart.y;
     ftDrawTree();
   });
-  ftCanvas.addEventListener('mousemove', e=>{
-    const {x,y}=scrPos(e);
-    if(ftPanning&&ftPanStart){ ftPanX=x-ftPanStart.x; ftPanY=y-ftPanStart.y; ftDrawTree(); return; }
-    if(!ftDrag) return;
-    const {x:wx,y:wy}=ftScreen2World(x,y);
-    ftDrag.node.x=wx-ftDrag.ox; ftDrag.node.y=wy-ftDrag.oy; ftDrawTree();
-  });
-  ftCanvas.addEventListener('mouseup', e=>{
-    if(ftPanning){ ftPanning=false; ftPanStart=null; ftCanvas.style.cursor='grab'; return; }
-    if(ftDrag){
-      const {x,y}=scrPos(e);
-      const moved = _mouseDownPos ? Math.hypot(x-_mouseDownPos.x, y-_mouseDownPos.y) : 99;
-      const n=ftDrag.node;
-      ftDrag.node.pinned=true; ftDrag=null; ftCanvas.style.cursor='grab';
-      // If barely moved = click, toggle expand on parent nodes
-      if(moved < 5 && n.expandable){
-        if(ftExpanded.has(n.id)) ftExpanded.delete(n.id);
-        else ftExpanded.add(n.id);
-        buildFamilyTree(charName);
-      }
-    }
-  });
-  ftCanvas.addEventListener('mouseleave',()=>{ ftDrag=null; ftPanning=false; ftCanvas.style.cursor='grab'; });
-  ftCanvas.addEventListener('contextmenu',e=>e.preventDefault());
-  ftCanvas.addEventListener('dblclick',e=>{
-    const {x,y}=scrPos(e), {x:wx,y:wy}=ftScreen2World(x,y);
-    const n=hitNode(wx,wy);
-    if(n){ n.pinned=false; if(ftTick>=400) ftRunSim(); }
-  });
+  ftCanvas.addEventListener('mouseup',    () => { ftPanning = false; ftCanvas.style.cursor = 'grab'; });
+  ftCanvas.addEventListener('mouseleave', () => { ftPanning = false; ftCanvas.style.cursor = 'grab'; });
 
-  // ── Touch ──
-  let lastTouchDist=0;
-  ftCanvas.addEventListener('touchstart',e=>{
+  // ── Touch pan + pinch zoom ────────────────────────────────────
+  let lastTouchDist = 0, lastTouchMid = null;
+  ftCanvas.addEventListener('touchstart', e => {
     e.preventDefault();
-    if(e.touches.length===2){
-      lastTouchDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
-      ftDrag=null; return;
+    if(e.touches.length === 2){
+      lastTouchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      lastTouchMid = {x:(e.touches[0].clientX+e.touches[1].clientX)/2, y:(e.touches[0].clientY+e.touches[1].clientY)/2};
+    } else {
+      ftPanning = true;
+      ftPanStart = {x: e.touches[0].clientX - ftPanX, y: e.touches[0].clientY - ftPanY};
     }
-    const {x:wx,y:wy}=worldPos(e);
-    const n=hitNode(wx,wy);
-    if(n){ftDrag={node:n,ox:wx-n.x,oy:wy-n.y};ftSelected=n;ftDrawTree();}
-  },{passive:false});
-  ftCanvas.addEventListener('touchmove',e=>{
+  }, {passive: false});
+  ftCanvas.addEventListener('touchmove', e => {
     e.preventDefault();
-    if(e.touches.length===2){
-      const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
-      if(lastTouchDist) ftZoomBy(d/lastTouchDist);
-      lastTouchDist=d; return;
+    if(e.touches.length === 2){
+      const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      const mid = {x:(e.touches[0].clientX+e.touches[1].clientX)/2, y:(e.touches[0].clientY+e.touches[1].clientY)/2};
+      if(lastTouchDist) ftZoomBy(d / lastTouchDist, mid.x, mid.y);
+      lastTouchDist = d; lastTouchMid = mid;
+    } else if(ftPanning){
+      ftPanX = e.touches[0].clientX - ftPanStart.x;
+      ftPanY = e.touches[0].clientY - ftPanStart.y;
+      ftDrawTree();
     }
-    if(!ftDrag) return;
-    const {x:wx,y:wy}=worldPos(e);
-    ftDrag.node.x=wx-ftDrag.ox; ftDrag.node.y=wy-ftDrag.oy; ftDrawTree();
-  },{passive:false});
-  ftCanvas.addEventListener('touchend',()=>{
-    if(ftDrag){ftDrag.node.pinned=true;ftDrag=null;} lastTouchDist=0;
-  });
+  }, {passive: false});
+  ftCanvas.addEventListener('touchend', () => { ftPanning = false; lastTouchDist = 0; });
 }
+
 
 function renderFamilyRoster(charName) {
   const members = FAMILIES[charName] || [];
@@ -1384,7 +1191,7 @@ function renderFamily(){
   const subTabs = `
     <div style="display:flex;gap:.5rem;padding:.7rem 1.4rem;border-bottom:1px solid var(--parchment-shadow);background:rgba(0,0,0,.15)">
       <button onclick="familySubTab='roster';renderFamily()" style="font-family:'Cinzel',serif;font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;padding:.3rem .8rem;border-radius:2px;border:1px solid;cursor:pointer;transition:all .15s;background:${familySubTab==='roster'?'#2a1a06':'rgba(0,0,0,.06)'};color:${familySubTab==='roster'?'#f0cc60':'#3a2008'};border-color:${familySubTab==='roster'?'var(--gold)':'#9a7a4a'}">📋 List</button>
-      <button onclick="familySubTab='tree';renderFamily();setTimeout(()=>{ftExpanded=new Set();initFamilyTreeCanvas(activeFamilyTab);},0)" style="font-family:'Cinzel',serif;font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;padding:.3rem .8rem;border-radius:2px;border:1px solid;cursor:pointer;transition:all .15s;background:${familySubTab==='tree'?'#2a1a06':'rgba(0,0,0,.06)'};color:${familySubTab==='tree'?'#f0cc60':'#3a2008'};border-color:${familySubTab==='tree'?'var(--gold)':'#9a7a4a'}">🌿 Family Tree</button>
+      <button onclick="familySubTab='tree';renderFamily();setTimeout(()=>{initFamilyTreeCanvas(activeFamilyTab);},0)" style="font-family:'Cinzel',serif;font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;padding:.3rem .8rem;border-radius:2px;border:1px solid;cursor:pointer;transition:all .15s;background:${familySubTab==='tree'?'#2a1a06':'rgba(0,0,0,.06)'};color:${familySubTab==='tree'?'#f0cc60':'#3a2008'};border-color:${familySubTab==='tree'?'var(--gold)':'#9a7a4a'}">🌿 Family Tree</button>
       <button onclick="familySubTab='entourage';renderFamily()" style="font-family:'Cinzel',serif;font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;padding:.3rem .8rem;border-radius:2px;border:1px solid;cursor:pointer;transition:all .15s;background:${familySubTab==='entourage'?'#1a1206':'rgba(0,0,0,.06)'};color:${familySubTab==='entourage'?'#e0c878':'#3a2008'};border-color:${familySubTab==='entourage'?'#c8a84a':'#9a7a4a'}">🏕 Household</button>
       
     </div>`;
@@ -1462,7 +1269,7 @@ function renderFamily(){
     </div>
   </div>`;
 
-  if(familySubTab==='tree') setTimeout(()=>{ftExpanded=new Set();initFamilyTreeCanvas(activeFamilyTab);}, 0);
+  if(familySubTab==='tree') setTimeout(()=>{initFamilyTreeCanvas(activeFamilyTab);}, 0);
 }
 
 // ─── MAIN RENDER ───
