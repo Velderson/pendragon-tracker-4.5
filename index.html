@@ -796,206 +796,370 @@ let familySubTab = 'roster'; // 'tree' or 'roster'
 let ftNodes=[], ftEdges=[], ftCanvas=null, ftCtx=null, ftDpr=1, ftW=900, ftH=660;
 let ftZoom=1, ftPanX=0, ftPanY=0, ftPanning=false, ftPanStart=null;
 
-const BW=96, BH=44; // node box size — slightly wider for full names
+const BW=100, BH=46; // node box
+const H_GAP=24;      // minimum horizontal gap between sibling boxes
+const V_GAP=80;      // vertical gap between generations
 
 function ftColor(status, isPC, illegitimate, isSpouse){
-  if(isPC)               return {fill:'#000000', stroke:'#f0c030', text:'#fff0a0', sw:2};
+  if(isPC)               return {fill:'#000000', stroke:'#f0c030', text:'#fff0a0', sw:2.5};
   if(isSpouse)           return {fill:'#000000', stroke:'#a090d0', text:'#d0c8f0', sw:1.5};
   if(illegitimate)       return {fill:'#000000', stroke:'#885050', text:'#c09080', sw:1, dash:true};
-  if(status==='dead')    return {fill:'#000000', stroke:'#ff6060', text:'#ff9090', sw:1.5};
+  if(status==='dead')    return {fill:'#000000', stroke:'#e05050', text:'#ff9090', sw:1.5};
   if(status==='unknown') return {fill:'#000000', stroke:'#8888cc', text:'#ccccff', sw:1};
   if(status==='ghost')   return {fill:'#000000', stroke:'#888866', text:'#cccc99', sw:1};
   return                        {fill:'#000000', stroke:'#c8a040', text:'#ffe8a0', sw:1};
 }
 
-function ftScreen2World(sx, sy){
-  return {x:(sx - ftPanX) / ftZoom, y:(sy - ftPanY) / ftZoom};
-}
+// ── Layout algorithm ─────────────────────────────────────────────────────────
+// Uses a Reingold–Tilford-style bottom-up width calculation so that:
+//   • children are always centred under their parent
+//   • sibling groups never overlap
+//   • lines never cross (children kept in data order)
+// ─────────────────────────────────────────────────────────────────────────────
 
 function buildFamilyTree(charName){
   ftNodes = []; ftEdges = [];
-  ftZoom = 1; ftPanX = 0; ftPanY = 0;
 
   const data = TREE_DATA[charName];
   if(!data) return;
 
-  // ── Show ALL nodes from all generations ──────────────────────
   const allNodes = data.generations.flat();
+  const byId     = id => allNodes.find(n => n.id === id);
 
-  // Group by generation index
-  const genMap = new Map();
-  data.generations.forEach((gen, gi) => {
-    gen.forEach(n => genMap.set(n.id, gi));
+  // ── 1. Assign generation index ──────────────────────────────
+  const genIndex = new Map(); // id → gi
+  data.generations.forEach((gen, gi) => gen.forEach(n => genIndex.set(n.id, gi)));
+
+  // ── 2. Build parent→children map (data order preserved) ─────
+  const children = new Map(); // parentId → [childId, ...]
+  allNodes.forEach(n => {
+    if(n.parentId){
+      if(!children.has(n.parentId)) children.set(n.parentId, []);
+      children.get(n.parentId).push(n.id);
+    }
   });
 
-  // ── Determine spouse pairings so they sit side-by-side ───────
-  // Build spouse pairs: map nodeId → partnerId
-  const spouseOf = new Map(); // id → spouseOf value
-  allNodes.forEach(n => { if(n.spouseOf) spouseOf.set(n.id, n.spouseOf); });
+  // ── 3. Identify "family units" per generation ────────────────
+  // A family unit = a parent + its children in the next generation.
+  // Nodes with no parent in the previous generation are "roots" at their gen.
+  // We lay out each generation as an ordered sequence of groups, where each group
+  // is the children of one parent, centred under that parent.
 
-  // ── Layout: assign x positions per generation ────────────────
-  const HGAP = 116; // horizontal gap between nodes
-  const VGAP = 90;  // vertical gap between generations
+  // Collect all nodes at each generation, in a stable order that respects
+  // parent ordering from the previous generation.
+  const numGens = data.generations.length;
 
-  // For each generation, order nodes: pair spouses together
-  const genGroups = data.generations.map((gen, gi) => {
-    const placed = new Set();
+  // ordered list of node-ids per generation (determined below)
+  const genOrder = data.generations.map(gen => gen.map(n => n.id));
+
+  // Sort each generation so children appear grouped under their parent,
+  // in the same order as the parent appears in the previous generation.
+  for(let gi = 1; gi < numGens; gi++){
+    const prevOrder = genOrder[gi-1];
+    const thisIds   = new Set(genOrder[gi]);
+
+    // Build ordered list: for each parent in prevOrder, insert its children
+    // in their original relative order; then append any orphans (no parent above).
     const ordered = [];
-    gen.forEach(n => {
-      if(placed.has(n.id)) return;
-      ordered.push(n);
-      placed.add(n.id);
-      // If this node has a spouse in the same generation, place them next
-      const partnerId = spouseOf.get(n.id) || [...spouseOf.entries()].find(([k,v])=>v===n.id&&gen.find(g=>g.id===k))?.[0];
-      if(partnerId) {
-        const partner = gen.find(g => g.id === partnerId);
-        if(partner && !placed.has(partnerId)) {
-          ordered.push(partner);
-          placed.add(partnerId);
-        }
+    const placed  = new Set();
+
+    prevOrder.forEach(pid => {
+      const kids = (children.get(pid) || []).filter(id => thisIds.has(id));
+      kids.forEach(kid => { if(!placed.has(kid)){ ordered.push(kid); placed.add(kid); } });
+    });
+    // Append nodes with no parent at prev gen (spouses, PC itself, etc.)
+    genOrder[gi].forEach(id => { if(!placed.has(id)){ ordered.push(id); placed.add(id); } });
+
+    genOrder[gi] = ordered;
+  }
+
+  // ── 4. Calculate x positions with Reingold–Tilford-like spacing ─
+  // subtreeWidth(id) = max(BW, sum of subtreeWidths of children + gaps)
+  // But we only look one generation deep per node for simplicity, since
+  // the data is already generation-indexed.
+
+  function childWidth(id){
+    // Width needed to accommodate all descendants of this node
+    // Only direct children here — the recursive case is handled per-generation
+    const kids = (children.get(id) || []).filter(k => genIndex.has(k));
+    if(!kids.length) return BW;
+    // Sum of child subtree widths + gaps between them
+    const total = kids.reduce((s, k) => s + childWidth(k), 0) + H_GAP * (kids.length - 1);
+    return Math.max(BW, total);
+  }
+
+  // Assign x positions generation by generation, top-down
+  // For each gen, place nodes in genOrder[gi], respecting parent centering.
+  const xPos = new Map(); // id → x (centre)
+
+  // Gen 0: lay out evenly spaced
+  {
+    const ids = genOrder[0];
+    // Compute widths for each node's subtree
+    const widths = ids.map(id => childWidth(id));
+    let cx = 0;
+    ids.forEach((id, i) => {
+      cx += widths[i] / 2;
+      xPos.set(id, cx);
+      cx += widths[i] / 2 + H_GAP;
+    });
+  }
+
+  // Gens 1+: position children centred under parents, then resolve overlaps
+  for(let gi = 1; gi < numGens; gi++){
+    const ids = genOrder[gi];
+    if(!ids.length) continue;
+
+    // First pass: assign ideal x = centre of parent, or spaced from neighbours
+    const ideal = new Map();
+    ids.forEach(id => {
+      const n = byId(id);
+      if(n && n.parentId && xPos.has(n.parentId)){
+        // Position relative to sibling group centre
+        const siblings = (children.get(n.parentId) || []).filter(k => genIndex.get(k) === gi);
+        const sibWidths = siblings.map(s => childWidth(s));
+        const totalW = sibWidths.reduce((a,b) => a+b, 0) + H_GAP * (siblings.length - 1);
+        const startX = xPos.get(n.parentId) - totalW / 2;
+        let cx = startX;
+        siblings.forEach((sid, si) => {
+          const cx_mid = cx + sibWidths[si] / 2;
+          ideal.set(sid, cx_mid);
+          cx += sibWidths[si] + H_GAP;
+        });
+      } else if(!ideal.has(id)){
+        // No parent above — will be resolved in overlap pass
+        ideal.set(id, null);
       }
     });
-    return {gi, nodes: ordered};
-  });
 
-  // Compute canvas width needed
-  const maxNodesInRow = Math.max(...genGroups.map(g => g.nodes.length));
-  const totalW = Math.max(ftW, maxNodesInRow * HGAP + 120);
-  const totalH = Math.max(ftH, genGroups.length * VGAP + 100);
+    // For nodes with no parent, assign provisional x = their subtreeWidth centre
+    // placed to the right of previous nodes
+    let cursor = 0;
+    ids.forEach(id => {
+      if(ideal.get(id) === null || ideal.get(id) === undefined){
+        const w = childWidth(id);
+        ideal.set(id, cursor + w/2);
+        cursor += w + H_GAP;
+      } else {
+        cursor = Math.max(cursor, (ideal.get(id) || 0) + childWidth(id)/2 + H_GAP);
+      }
+    });
 
-  // Store world dimensions for panning limits
-  ftNodes._worldW = totalW;
-  ftNodes._worldH = totalH;
+    // Second pass: resolve overlaps left-to-right, maintaining min gap
+    const positions = ids.map(id => ideal.get(id) || 0);
+    for(let i = 1; i < positions.length; i++){
+      const minX = positions[i-1] + BW/2 + H_GAP + BW/2;
+      if(positions[i] < minX) positions[i] = minX;
+    }
+    ids.forEach((id, i) => xPos.set(id, positions[i]));
+  }
 
-  // Place nodes
-  genGroups.forEach(({gi, nodes}) => {
-    const rowW = nodes.length * HGAP;
-    const startX = totalW / 2 - rowW / 2 + HGAP / 2;
-    const y = 60 + gi * VGAP;
-    nodes.forEach((n, idx) => {
-      ftNodes.push({
-        id: n.id,
-        label: n.label || '',
-        role: n.role || '',
-        status: n.ghost ? 'ghost' : (n.status || 'alive'),
-        age: n.age || '',
-        glory: n.glory || '',
-        pc: !!n.pc,
-        ghost: !!n.ghost,
-        illegitimate: !!n.illegitimate,
-        isSpouse: !!(n.spouseOf),
-        gi,
-        x: startX + idx * HGAP,
-        y,
-        parentId: n.parentId || null,
-        spouseOf: n.spouseOf || null,
-        isfather: !!n.isfather,
-        ismother: !!n.ismother,
-      });
+  // ── 5. Compute total canvas size ────────────────────────────
+  const allX = [...xPos.values()];
+  const totalW = Math.max(ftW, Math.max(...allX) + BW/2 + 60);
+  const totalH = numGens * (BH + V_GAP) + 80;
+
+  // Shift everything so leftmost node has x=BW/2+40
+  const minX = Math.min(...allX);
+  const shiftX = BW/2 + 40 - minX;
+  xPos.forEach((v, k) => xPos.set(k, v + shiftX));
+
+  const worldW = Math.max(ftW, Math.max(...xPos.values()) + BW/2 + 60);
+  const worldH = Math.max(ftH, totalH);
+  ftNodes._worldW = worldW;
+  ftNodes._worldH = worldH;
+
+  // ── 6. Build ftNodes ─────────────────────────────────────────
+  allNodes.forEach(n => {
+    if(!xPos.has(n.id)) return; // skip nodes not placed
+    const gi = genIndex.get(n.id);
+    ftNodes.push({
+      id: n.id,
+      label: n.label || '',
+      role:  n.role  || '',
+      status: n.ghost ? 'ghost' : (n.status || 'alive'),
+      age:   n.age   || '',
+      glory: n.glory || '',
+      pc:    !!n.pc,
+      ghost: !!n.ghost,
+      illegitimate: !!n.illegitimate,
+      isSpouse: !!(n.spouseOf),
+      gi,
+      x: xPos.get(n.id),
+      y: 50 + gi * (BH + V_GAP),
+      parentId:  n.parentId  || null,
+      spouseOf:  n.spouseOf  || null,
+      isfather:  !!n.isfather,
+      ismother:  !!n.ismother,
     });
   });
 
-  // ── Build edges ───────────────────────────────────────────────
-  const nodeById = id => ftNodes.find(n => n.id === id);
+  // ── 7. Build edges ───────────────────────────────────────────
+  const nodeMap = new Map(ftNodes.map(n => [n.id, n]));
 
   ftNodes.forEach(n => {
-    if(n.parentId && nodeById(n.parentId)){
+    if(n.parentId && nodeMap.has(n.parentId)){
       ftEdges.push({a: n.parentId, b: n.id, type: 'parent', illegitimate: n.illegitimate});
     }
-    if(n.spouseOf && nodeById(n.spouseOf)){
+    if(n.spouseOf && nodeMap.has(n.spouseOf)){
       const already = ftEdges.find(e => e.type==='spouse' && ((e.a===n.id&&e.b===n.spouseOf)||(e.a===n.spouseOf&&e.b===n.id)));
       if(!already) ftEdges.push({a: n.spouseOf, b: n.id, type: 'spouse'});
     }
   });
-
-  // father-mother couple edge
-  const fid = ftNodes.find(n=>n.isfather)?.id;
-  const mid = ftNodes.find(n=>n.ismother)?.id;
-  if(fid && mid && !ftEdges.find(e=>e.type==='couple')){
+  // father–mother couple edge
+  const fid = ftNodes.find(n => n.isfather)?.id;
+  const mid = ftNodes.find(n => n.ismother)?.id;
+  if(fid && mid && !ftEdges.find(e => e.type==='couple')){
     ftEdges.push({a: fid, b: mid, type: 'couple'});
   }
 
-  // Centre initial view on the PC node
+  // ── 8. Centre initial view on PC ────────────────────────────
   const pcNode = ftNodes.find(n => n.pc);
   if(pcNode){
-    ftPanX = ftW/2 - pcNode.x * ftZoom;
-    ftPanY = ftH/2 - pcNode.y * ftZoom - 60;
+    ftPanX = ftW/2 - pcNode.x;
+    ftPanY = Math.max(20, ftH*0.3 - pcNode.y);
+  } else {
+    ftPanX = 40; ftPanY = 40;
   }
 
   ftDrawTree();
 }
+
+// ── Draw ─────────────────────────────────────────────────────────────────────
+const PARCHMENT_BG = '#f5ead6';
 
 function ftDrawTree(){
   if(!ftCtx) return;
   const ctx = ftCtx;
   ctx.clearRect(0, 0, ftW * ftDpr, ftH * ftDpr);
 
-  // Background
-  ctx.fillStyle = '#000000';
-  ctx.fillRect(0, 0, ftW * ftDpr, ftH * ftDpr);
+  ctx.save(); ctx.scale(ftDpr, ftDpr);
 
-  ctx.save();
-  ctx.scale(ftDpr, ftDpr);
+  // Beige parchment background
+  ctx.fillStyle = PARCHMENT_BG;
+  ctx.fillRect(0, 0, ftW, ftH);
+
   ctx.translate(ftPanX, ftPanY);
   ctx.scale(ftZoom, ftZoom);
 
   const nodeMap = new Map(ftNodes.map(n => [n.id, n]));
 
-  // ── Draw edges ────────────────────────────────────────────────
+  // ── Parent–child connectors ───────────────────────────────────
+  // Group children by parent so we can draw a single horizontal bar
+  const parentToChildren = new Map();
   ftEdges.forEach(e => {
-    const a = nodeMap.get(e.a), b = nodeMap.get(e.b);
-    if(!a || !b) return;
-
-    ctx.globalAlpha = 0.7;
-
-    if(e.type === 'spouse' || e.type === 'couple'){
-      ctx.strokeStyle = '#b8962a';
-      ctx.lineWidth = 1.2 / ftZoom;
-      ctx.setLineDash([4/ftZoom, 3/ftZoom]);
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    } else {
-      // Elbow connector: down from parent, horizontal, up to child
-      const my = (a.y + BH/2 + b.y - BH/2) / 2;
-      ctx.strokeStyle = e.illegitimate ? '#885050' : '#5a4010';
-      ctx.lineWidth = 1 / ftZoom;
-      if(e.illegitimate) ctx.setLineDash([3/ftZoom, 2/ftZoom]);
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y + BH/2);
-      ctx.lineTo(a.x, my);
-      ctx.lineTo(b.x, my);
-      ctx.lineTo(b.x, b.y - BH/2);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-    ctx.globalAlpha = 1;
+    if(e.type !== 'parent') return;
+    if(!parentToChildren.has(e.a)) parentToChildren.set(e.a, []);
+    parentToChildren.get(e.a).push(e.b);
   });
 
-  // ── Draw nodes ────────────────────────────────────────────────
+  parentToChildren.forEach((childIds, pid) => {
+    const par = nodeMap.get(pid);
+    if(!par) return;
+    const kids = childIds.map(id => nodeMap.get(id)).filter(Boolean);
+    if(!kids.length) return;
+
+    const illegKids  = kids.filter(k => k.illegitimate);
+    const legitKids  = kids.filter(k => !k.illegitimate);
+
+    // Draw legitimate children grouped
+    if(legitKids.length){
+      const barY   = (par.y + BH/2 + legitKids[0].y - BH/2) / 2;
+      const leftX  = Math.min(par.x, ...legitKids.map(k => k.x));
+      const rightX = Math.max(par.x, ...legitKids.map(k => k.x));
+
+      ctx.strokeStyle = '#8a6820';
+      ctx.lineWidth   = 1 / ftZoom;
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 0.8;
+
+      // Vertical drop from parent
+      ctx.beginPath();
+      ctx.moveTo(par.x, par.y + BH/2);
+      ctx.lineTo(par.x, barY);
+      ctx.stroke();
+
+      // Horizontal bar spanning all children
+      if(legitKids.length > 1){
+        ctx.beginPath();
+        ctx.moveTo(leftX, barY);
+        ctx.lineTo(rightX, barY);
+        ctx.stroke();
+      }
+
+      // Vertical rise to each child
+      legitKids.forEach(k => {
+        ctx.beginPath();
+        ctx.moveTo(k.x, barY);
+        ctx.lineTo(k.x, k.y - BH/2);
+        ctx.stroke();
+      });
+    }
+
+    // Draw illegitimate children with dashed lines, separately
+    illegKids.forEach(k => {
+      const barY = (par.y + BH/2 + k.y - BH/2) / 2;
+      ctx.strokeStyle = '#885050';
+      ctx.lineWidth   = 1 / ftZoom;
+      ctx.setLineDash([4/ftZoom, 3/ftZoom]);
+      ctx.globalAlpha = 0.7;
+      ctx.beginPath();
+      ctx.moveTo(par.x, par.y + BH/2);
+      ctx.lineTo(par.x, barY);
+      ctx.lineTo(k.x, barY);
+      ctx.lineTo(k.x, k.y - BH/2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    });
+  });
+
+  // ── Spouse/couple lines ───────────────────────────────────────
+  ftEdges.forEach(e => {
+    if(e.type !== 'spouse' && e.type !== 'couple') return;
+    const a = nodeMap.get(e.a), b = nodeMap.get(e.b);
+    if(!a || !b) return;
+    const midY = (a.y + b.y) / 2;
+    ctx.strokeStyle = '#a090d0';
+    ctx.lineWidth   = 1 / ftZoom;
+    ctx.setLineDash([5/ftZoom, 3/ftZoom]);
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(a.x + (b.x > a.x ? BW/2 : -BW/2), a.y);
+    ctx.lineTo(b.x + (b.x > a.x ? -BW/2 : BW/2), b.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  ctx.globalAlpha = 1;
+
+  // ── Nodes ─────────────────────────────────────────────────────
   ftNodes.forEach(n => {
     const col = ftColor(n.status, n.pc, n.illegitimate, n.isSpouse);
-    const nx = n.x - BW/2, ny = n.y - BH/2;
+    const nx  = n.x - BW/2, ny = n.y - BH/2;
 
-    ctx.globalAlpha = n.ghost ? 0.55 : 1;
+    ctx.globalAlpha = n.ghost ? 0.5 : 1;
 
-    // Box fill (always black)
-    ctx.fillStyle = col.fill;
+    // Drop shadow
+    ctx.shadowColor   = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur    = 4 / ftZoom;
+    ctx.shadowOffsetY = 2 / ftZoom;
+
+    // Black box fill
+    ctx.fillStyle   = '#000000';
     ctx.strokeStyle = col.stroke;
-    ctx.lineWidth = col.sw / ftZoom;
+    ctx.lineWidth   = col.sw / ftZoom;
     if(col.dash) ctx.setLineDash([3/ftZoom, 2/ftZoom]);
     ctx.beginPath(); ctx.roundRect(nx, ny, BW, BH, 3);
     ctx.fill(); ctx.stroke();
     ctx.setLineDash([]);
+    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
 
-    // Dead strikethrough
+    // Deceased strikethrough
     if(n.status === 'dead' && !n.ghost){
       ctx.save();
-      ctx.globalAlpha = 0.25;
+      ctx.globalAlpha = 0.22;
       ctx.strokeStyle = '#cc3333';
-      ctx.lineWidth = 0.7 / ftZoom;
+      ctx.lineWidth   = 0.8 / ftZoom;
       ctx.beginPath(); ctx.moveTo(nx+3, ny+3); ctx.lineTo(nx+BW-3, ny+BH-3); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(nx+BW-3, ny+3); ctx.lineTo(nx+3, ny+BH-3); ctx.stroke();
       ctx.restore();
@@ -1003,56 +1167,60 @@ function ftDrawTree(){
 
     // PC star
     if(n.pc){
-      ctx.font = `bold ${10/ftZoom}px serif`;
-      ctx.fillStyle = '#ffd700'; ctx.textAlign = 'right';
+      ctx.font       = `bold ${10/ftZoom}px serif`;
+      ctx.fillStyle  = '#ffd700';
+      ctx.textAlign  = 'right';
       ctx.globalAlpha = 1;
-      ctx.fillText('★', nx+BW-3, ny+11);
+      ctx.fillText('★', nx+BW-3, ny+12);
     }
 
-    // Text
     const fs = 1 / ftZoom;
     ctx.textAlign = 'center';
     ctx.globalAlpha = n.ghost ? 0.6 : 1;
 
-    // Name
-    ctx.font = `${n.pc ? 'bold ' : ''}${9*fs}px Cinzel,serif`;
+    // Name (wraps if contains \n)
+    const nameLines = n.label.split('\n');
+    ctx.font      = `${n.pc ? 'bold ' : ''}${9*fs}px Cinzel,serif`;
     ctx.fillStyle = col.text;
-    ctx.fillText(n.label, n.x, ny + 14);
-
-    // Role (first segment only, truncated)
-    if(n.role && !n.ghost){
-      ctx.font = `italic ${7*fs}px serif`;
-      ctx.globalAlpha = n.ghost ? 0.5 : 0.85;
-      ctx.fillStyle = col.text;
-      ctx.fillText(n.role.split('·')[0].trim().slice(0, 22), n.x, ny + 24);
+    if(nameLines.length > 1){
+      ctx.fillText(nameLines[0], n.x, ny + 13);
+      ctx.fillText(nameLines[1], n.x, ny + 23);
+    } else {
+      ctx.fillText(n.label, n.x, ny + 14);
+      // Role (first part only, truncated)
+      if(n.role && !n.ghost){
+        ctx.font        = `italic ${7*fs}px serif`;
+        ctx.globalAlpha = n.ghost ? 0.4 : 0.85;
+        ctx.fillStyle   = col.text;
+        ctx.fillText(n.role.split('·')[0].trim().slice(0, 24), n.x, ny + 25);
+      }
     }
-
     // Age / glory
     const sub = [n.age ? 'Age '+n.age : '', n.glory ? '✦'+n.glory : ''].filter(Boolean).join('  ');
     if(sub){
-      ctx.font = `${6*fs}px serif`;
-      ctx.globalAlpha = 0.7;
-      ctx.fillStyle = col.text;
-      ctx.fillText(sub, n.x, ny + 35);
+      ctx.font        = `${6*fs}px serif`;
+      ctx.globalAlpha = 0.75;
+      ctx.fillStyle   = col.text;
+      ctx.fillText(sub, n.x, ny + 37);
     }
 
     ctx.globalAlpha = 1;
   });
 
-  ctx.restore();
+  ctx.restore(); // end pan/zoom
 
-  // Zoom % indicator
+  // Zoom % indicator (screen space)
   ctx.save(); ctx.scale(ftDpr, ftDpr);
-  ctx.font = '9px serif';
-  ctx.fillStyle = 'rgba(180,160,100,0.45)';
+  ctx.font      = '9px serif';
+  ctx.fillStyle = 'rgba(90,70,30,0.55)';
   ctx.textAlign = 'right';
-  ctx.fillText(Math.round(ftZoom*100)+'%', ftW - 8, ftH - 6);
+  ctx.fillText(Math.round(ftZoom*100)+'%', ftW-8, ftH-6);
   ctx.restore();
 }
 
 function ftZoomBy(delta, cx, cy){
   const oldZoom = ftZoom;
-  ftZoom = Math.max(0.2, Math.min(4, ftZoom * delta));
+  ftZoom = Math.max(0.18, Math.min(4, ftZoom * delta));
   const wx = cx === undefined ? ftW/2 : cx;
   const wy = cy === undefined ? ftH/2 : cy;
   ftPanX = wx - (wx - ftPanX) * (ftZoom / oldZoom);
@@ -1061,10 +1229,10 @@ function ftZoomBy(delta, cx, cy){
 }
 
 function ftResetView(){
-  ftZoom = 1; ftPanX = 0; ftPanY = 0;
-  // Re-centre on PC node
-  const pcNode = ftNodes.find(n => n.pc);
-  if(pcNode){ ftPanX = ftW/2 - pcNode.x; ftPanY = ftH/2 - pcNode.y - 60; }
+  ftZoom = 1;
+  const pc = ftNodes.find(n => n.pc);
+  ftPanX = pc ? ftW/2 - pc.x : 40;
+  ftPanY = pc ? Math.max(20, ftH*0.3 - pc.y) : 40;
   ftDrawTree();
 }
 
@@ -1073,28 +1241,30 @@ function initFamilyTreeCanvas(charName){
   if(!ftCanvas) return;
   const cont = ftCanvas.parentElement;
   ftDpr = window.devicePixelRatio || 1;
-  ftW = cont.clientWidth || 900;
-  ftH = Math.max(600, Math.round(ftW * 0.65));
-  ftCanvas.width = ftW * ftDpr; ftCanvas.height = ftH * ftDpr;
-  ftCanvas.style.width = ftW + 'px'; ftCanvas.style.height = ftH + 'px';
+  ftW   = cont.clientWidth || 900;
+  ftH   = Math.max(620, Math.round(ftW * 0.68));
+  ftCanvas.width        = ftW * ftDpr;
+  ftCanvas.height       = ftH * ftDpr;
+  ftCanvas.style.width  = ftW + 'px';
+  ftCanvas.style.height = ftH + 'px';
   ftCtx = ftCanvas.getContext('2d');
 
   // Zoom controls
   if(!document.getElementById('ftZoomControls')){
     const bar = document.createElement('div');
     bar.id = 'ftZoomControls';
-    bar.style.cssText = 'display:flex;gap:6px;align-items:center;padding:6px 10px;background:#0a0a0a;border-bottom:1px solid #333;';
+    bar.style.cssText = `display:flex;gap:6px;align-items:center;padding:6px 10px;background:#e8d5b0;border-bottom:1px solid #c9b48a;`;
     bar.innerHTML = `
-      <button onclick="ftZoomBy(1.25)" title="Zoom in"  style="background:#111;border:1px solid #555;color:#eee;width:28px;height:28px;border-radius:3px;cursor:pointer;font-size:15px;line-height:1">+</button>
-      <button onclick="ftZoomBy(0.8)"  title="Zoom out" style="background:#111;border:1px solid #555;color:#eee;width:28px;height:28px;border-radius:3px;cursor:pointer;font-size:15px;line-height:1">−</button>
-      <button onclick="ftResetView()"  title="Reset"    style="background:#111;border:1px solid #555;color:#eee;padding:0 10px;height:28px;border-radius:3px;cursor:pointer;font-size:10px;font-family:Cinzel,serif;letter-spacing:.05em">Reset</button>
-      <span style="font-size:9px;color:#888;font-family:serif;margin-left:6px">Scroll to zoom · Drag to pan</span>`;
+      <button onclick="ftZoomBy(1.25)" style="background:#f5ead6;border:1px solid #c9b48a;color:#3a2008;width:28px;height:28px;border-radius:3px;cursor:pointer;font-size:15px;line-height:1;font-weight:bold">+</button>
+      <button onclick="ftZoomBy(0.8)"  style="background:#f5ead6;border:1px solid #c9b48a;color:#3a2008;width:28px;height:28px;border-radius:3px;cursor:pointer;font-size:15px;line-height:1;font-weight:bold">−</button>
+      <button onclick="ftResetView()"  style="background:#f5ead6;border:1px solid #c9b48a;color:#3a2008;padding:0 10px;height:28px;border-radius:3px;cursor:pointer;font-size:10px;font-family:Cinzel,serif;letter-spacing:.05em">Reset</button>
+      <span style="font-size:9px;color:#5a4a2a;font-family:serif;margin-left:6px">Scroll to zoom · Drag to pan</span>`;
     cont.insertBefore(bar, ftCanvas);
   }
 
   buildFamilyTree(charName);
 
-  // ── Scroll to zoom ────────────────────────────────────────────
+  // scroll zoom
   ftCanvas.addEventListener('wheel', e => {
     e.preventDefault();
     const r = ftCanvas.getBoundingClientRect();
@@ -1103,7 +1273,7 @@ function initFamilyTreeCanvas(charName){
     ftZoomBy(e.deltaY < 0 ? 1.12 : 1/1.12, x, y);
   }, {passive: false});
 
-  // ── Mouse pan ─────────────────────────────────────────────────
+  // pan
   ftCanvas.addEventListener('mousedown', e => {
     ftPanning = true;
     ftPanStart = {x: e.clientX - ftPanX, y: e.clientY - ftPanY};
@@ -1118,31 +1288,29 @@ function initFamilyTreeCanvas(charName){
   ftCanvas.addEventListener('mouseup',    () => { ftPanning = false; ftCanvas.style.cursor = 'grab'; });
   ftCanvas.addEventListener('mouseleave', () => { ftPanning = false; ftCanvas.style.cursor = 'grab'; });
 
-  // ── Touch pan + pinch zoom ────────────────────────────────────
-  let lastTouchDist = 0, lastTouchMid = null;
+  // touch pan + pinch zoom
+  let lastTouchDist = 0;
   ftCanvas.addEventListener('touchstart', e => {
     e.preventDefault();
     if(e.touches.length === 2){
-      lastTouchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-      lastTouchMid = {x:(e.touches[0].clientX+e.touches[1].clientX)/2, y:(e.touches[0].clientY+e.touches[1].clientY)/2};
+      lastTouchDist = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
     } else {
-      ftPanning = true;
+      ftPanning  = true;
       ftPanStart = {x: e.touches[0].clientX - ftPanX, y: e.touches[0].clientY - ftPanY};
     }
-  }, {passive: false});
+  }, {passive:false});
   ftCanvas.addEventListener('touchmove', e => {
     e.preventDefault();
     if(e.touches.length === 2){
-      const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-      const mid = {x:(e.touches[0].clientX+e.touches[1].clientX)/2, y:(e.touches[0].clientY+e.touches[1].clientY)/2};
-      if(lastTouchDist) ftZoomBy(d / lastTouchDist, mid.x, mid.y);
-      lastTouchDist = d; lastTouchMid = mid;
+      const d = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+      if(lastTouchDist) ftZoomBy(d / lastTouchDist);
+      lastTouchDist = d;
     } else if(ftPanning){
       ftPanX = e.touches[0].clientX - ftPanStart.x;
       ftPanY = e.touches[0].clientY - ftPanStart.y;
       ftDrawTree();
     }
-  }, {passive: false});
+  }, {passive:false});
   ftCanvas.addEventListener('touchend', () => { ftPanning = false; lastTouchDist = 0; });
 }
 
