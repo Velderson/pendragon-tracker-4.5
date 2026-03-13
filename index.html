@@ -1046,10 +1046,10 @@ function buildFamilyTree(charName){
   }
 
   // ── 8. Centre initial view on PC ────────────────────────────
-  const pcNode = ftNodes.find(n => n.pc);
-  if(pcNode){
-    ftPanX = ftW/2 - pcNode.x;
-    ftPanY = Math.max(20, ftH*0.3 - pcNode.y);
+  const pcNodeView = ftNodes.find(n => n.pc);
+  if(pcNodeView){
+    ftPanX = ftW/2 - pcNodeView.x;
+    ftPanY = Math.max(20, ftH*0.3 - pcNodeView.y);
   } else {
     ftPanX = 40; ftPanY = 40;
   }
@@ -1281,54 +1281,65 @@ function initFamilyTreeCanvas(charName){
   ftCanvas.style.height = ftH + 'px';
   ftCtx = ftCanvas.getContext('2d');
 
-  // Zoom controls
-  if(!document.getElementById('ftZoomControls')){
-    const bar = document.createElement('div');
-    bar.id = 'ftZoomControls';
-    bar.style.cssText = `display:flex;gap:6px;align-items:center;padding:6px 10px;background:#e8d5b0;border-bottom:1px solid #c9b48a;`;
-    bar.innerHTML = `
-      <button onclick="ftZoomBy(1.25)" style="background:#f5ead6;border:1px solid #c9b48a;color:#3a2008;width:28px;height:28px;border-radius:3px;cursor:pointer;font-size:15px;line-height:1;font-weight:bold">+</button>
-      <button onclick="ftZoomBy(0.8)"  style="background:#f5ead6;border:1px solid #c9b48a;color:#3a2008;width:28px;height:28px;border-radius:3px;cursor:pointer;font-size:15px;line-height:1;font-weight:bold">−</button>
-      <button onclick="ftResetView()"  style="background:#f5ead6;border:1px solid #c9b48a;color:#3a2008;padding:0 10px;height:28px;border-radius:3px;cursor:pointer;font-size:10px;font-family:Cinzel,serif;letter-spacing:.05em">Reset</button>
-      <span style="font-size:9px;color:#5a4a2a;font-family:serif;margin-left:6px">Scroll to zoom · Drag to pan</span>`;
-    cont.insertBefore(bar, ftCanvas);
-  }
+  // Zoom controls — always rebuild (container is re-created on each renderFamily)
+  const oldBar = document.getElementById('ftZoomControls');
+  if(oldBar) oldBar.remove();
+  const bar = document.createElement('div');
+  bar.id = 'ftZoomControls';
+  bar.style.cssText = 'display:flex;gap:6px;align-items:center;padding:6px 10px;background:#e8d5b0;border-bottom:1px solid #c9b48a;';
+  bar.innerHTML = `
+    <button onclick="ftZoomBy(1.25)" style="background:#f5ead6;border:1px solid #c9b48a;color:#3a2008;width:28px;height:28px;border-radius:3px;cursor:pointer;font-size:15px;line-height:1;font-weight:bold">+</button>
+    <button onclick="ftZoomBy(0.8)"  style="background:#f5ead6;border:1px solid #c9b48a;color:#3a2008;width:28px;height:28px;border-radius:3px;cursor:pointer;font-size:15px;line-height:1;font-weight:bold">−</button>
+    <button onclick="ftResetView()"  style="background:#f5ead6;border:1px solid #c9b48a;color:#3a2008;padding:0 10px;height:28px;border-radius:3px;cursor:pointer;font-size:10px;font-family:Cinzel,serif;letter-spacing:.05em">Reset</button>
+    <span style="font-size:9px;color:#5a4a2a;font-family:serif;margin-left:6px">Scroll to zoom · Drag to pan</span>`;
+  cont.insertBefore(bar, ftCanvas);
 
   buildFamilyTree(charName);
 
-  // scroll zoom
+  // Helper: canvas-relative coords accounting for CSS scaling
+  function canvasXY(clientX, clientY){
+    const r = ftCanvas.getBoundingClientRect();
+    return {
+      x: (clientX - r.left) * (ftW / r.width),
+      y: (clientY - r.top)  * (ftH / r.height)
+    };
+  }
+
+  // Scroll to zoom
   ftCanvas.addEventListener('wheel', e => {
     e.preventDefault();
-    const r = ftCanvas.getBoundingClientRect();
-    const x = (e.clientX - r.left) * (ftW / r.width);
-    const y = (e.clientY - r.top)  * (ftH / r.height);
+    const {x, y} = canvasXY(e.clientX, e.clientY);
     ftZoomBy(e.deltaY < 0 ? 1.12 : 1/1.12, x, y);
   }, {passive: false});
 
-  // pan
+  // Mouse pan
   ftCanvas.addEventListener('mousedown', e => {
+    e.preventDefault();
     ftPanning = true;
-    ftPanStart = {x: e.clientX - ftPanX, y: e.clientY - ftPanY};
+    const {x, y} = canvasXY(e.clientX, e.clientY);
+    ftPanStart = {x: x - ftPanX, y: y - ftPanY};
     ftCanvas.style.cursor = 'grabbing';
   });
   ftCanvas.addEventListener('mousemove', e => {
     if(!ftPanning) return;
-    ftPanX = e.clientX - ftPanStart.x;
-    ftPanY = e.clientY - ftPanStart.y;
+    const {x, y} = canvasXY(e.clientX, e.clientY);
+    ftPanX = x - ftPanStart.x;
+    ftPanY = y - ftPanStart.y;
     ftDrawTree();
   });
   ftCanvas.addEventListener('mouseup',    () => { ftPanning = false; ftCanvas.style.cursor = 'grab'; });
   ftCanvas.addEventListener('mouseleave', () => { ftPanning = false; ftCanvas.style.cursor = 'grab'; });
 
-  // touch pan + pinch zoom
+  // Touch pan + pinch zoom
   let lastTouchDist = 0;
   ftCanvas.addEventListener('touchstart', e => {
     e.preventDefault();
     if(e.touches.length === 2){
       lastTouchDist = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
     } else {
-      ftPanning  = true;
-      ftPanStart = {x: e.touches[0].clientX - ftPanX, y: e.touches[0].clientY - ftPanY};
+      ftPanning = true;
+      const {x, y} = canvasXY(e.touches[0].clientX, e.touches[0].clientY);
+      ftPanStart = {x: x - ftPanX, y: y - ftPanY};
     }
   }, {passive:false});
   ftCanvas.addEventListener('touchmove', e => {
@@ -1338,8 +1349,9 @@ function initFamilyTreeCanvas(charName){
       if(lastTouchDist) ftZoomBy(d / lastTouchDist);
       lastTouchDist = d;
     } else if(ftPanning){
-      ftPanX = e.touches[0].clientX - ftPanStart.x;
-      ftPanY = e.touches[0].clientY - ftPanStart.y;
+      const {x, y} = canvasXY(e.touches[0].clientX, e.touches[0].clientY);
+      ftPanX = x - ftPanStart.x;
+      ftPanY = y - ftPanStart.y;
       ftDrawTree();
     }
   }, {passive:false});
