@@ -830,6 +830,23 @@ function buildFamilyTree(charName){
   const genIndex = new Map(); // id → gi
   data.generations.forEach((gen, gi) => gen.forEach(n => genIndex.set(n.id, gi)));
 
+  // ── 1b. Auto-assign parentId to PC & siblings that lack one ───
+  // The data files don't set parentId on the PC or their siblings, but
+  // there is always an isfather node one generation above. Wire them up now.
+  const fatherNode = allNodes.find(n => n.isfather);
+  const motherNode = allNodes.find(n => n.ismother);
+  const pcNode     = allNodes.find(n => n.pc);
+  if(fatherNode && pcNode){
+    const pcGen = genIndex.get(pcNode.id);
+    const parGen = genIndex.get(fatherNode.id);
+    if(pcGen !== undefined && parGen !== undefined && pcGen === parGen + 1){
+      // Any node in pcGen with no parentId and no spouseOf → child of father
+      data.generations[pcGen].forEach(n => {
+        if(!n.parentId && !n.spouseOf) n.parentId = fatherNode.id;
+      });
+    }
+  }
+
   // ── 2. Build parent→children map (data order preserved) ─────
   const children = new Map(); // parentId → [childId, ...]
   allNodes.forEach(n => {
@@ -997,6 +1014,21 @@ function buildFamilyTree(charName){
   // ── 7. Build edges ───────────────────────────────────────────
   const nodeMap = new Map(ftNodes.map(n => [n.id, n]));
 
+  // Auto-link PC and siblings that have no parentId to the father node.
+  // These are nodes in the same generation as the PC that lack a parentId
+  // and are not spouses — they must be children of the father/mother.
+  const fatherFtNode = ftNodes.find(n => n.isfather);
+  const motherFtNode = ftNodes.find(n => n.ismother);
+  const pcFtNode     = ftNodes.find(n => n.pc);
+  if(fatherFtNode && pcFtNode){
+    const pcGi = pcFtNode.gi;
+    ftNodes.forEach(n => {
+      if(n.gi === pcGi && !n.parentId && !n.spouseOf && !n.isfather && !n.ismother){
+        n.parentId = fatherFtNode.id;
+      }
+    });
+  }
+
   ftNodes.forEach(n => {
     if(n.parentId && nodeMap.has(n.parentId)){
       ftEdges.push({a: n.parentId, b: n.id, type: 'parent', illegitimate: n.illegitimate});
@@ -1007,8 +1039,8 @@ function buildFamilyTree(charName){
     }
   });
   // father–mother couple edge
-  const fid = ftNodes.find(n => n.isfather)?.id;
-  const mid = ftNodes.find(n => n.ismother)?.id;
+  const fid = fatherFtNode?.id;
+  const mid = motherFtNode?.id;
   if(fid && mid && !ftEdges.find(e => e.type==='couple')){
     ftEdges.push({a: fid, b: mid, type: 'couple'});
   }
