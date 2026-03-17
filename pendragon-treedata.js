@@ -61,7 +61,8 @@ const TREE_DATA = {
           "id": "uwain",
           "label": "Iorwerth",
           "role": "Father · Knight",
-          "status": "unknown",
+          "status": "dead",
+          "parentId": "gp_pat",
           "isfather": true,
           "note": "Whereabouts unknown"
         },
@@ -356,6 +357,7 @@ const TREE_DATA = {
           "role": "Mother",
           "status": "alive",
           "age": "43",
+          "parentId": "gp_mat",
           "ismother": true
         },
         {
@@ -713,9 +715,8 @@ const TREE_DATA = {
         {
           "id": "tim_father",
           "label": "Crautreic",
-          "role": "Father · Knight (dead)",
+          "role": "Father · Knight",
           "status": "dead",
-          "ghost": true,
           "parentId": "gp_pat",
           "isfather": true
         },
@@ -940,20 +941,13 @@ const TREE_DATA = {
     "generations": [
       [
         {
-          "id": "govan",
-          "label": "Govan",
-          "role": "Great Uncle · Knight",
-          "status": "alive",
-          "age": "54"
-        },
-        {
-          "id": "g_pat_f",
-          "label": "Brochfael",
+          "id": "gp_pat",
+          "label": "Brochfael & Nesta",
           "status": "dead",
           "ghost": true
         },
         {
-          "id": "g_mat",
+          "id": "gp_mat",
           "label": "Custennin & Arianrhod",
           "status": "dead",
           "ghost": true
@@ -961,12 +955,21 @@ const TREE_DATA = {
       ],
       [
         {
+          "id": "govan",
+          "label": "Govan",
+          "role": "Paternal Uncle · Knight",
+          "status": "alive",
+          "age": "54",
+          "parentId": "gp_pat",
+          "parentId": "gp_pat"
+        },
+        {
           "id": "sulbiu",
           "label": "Sulbiu",
           "role": "Uncle · Knight",
           "status": "dead",
           "age": "36",
-          "parentId": "govan"
+          "parentId": "gp_pat"
         },
         {
           "id": "lovel",
@@ -974,7 +977,7 @@ const TREE_DATA = {
           "role": "Cousin · Knight",
           "status": "alive",
           "age": "38",
-          "parentId": "g_pat_f"
+          "parentId": "gp_pat"
         },
         {
           "id": "dagodoc",
@@ -983,7 +986,7 @@ const TREE_DATA = {
           "status": "dead",
           "age": "59",
           "glory": "2241",
-          "parentId": "g_pat_f",
+          "parentId": "gp_pat",
           "isfather": true
         },
         {
@@ -992,7 +995,7 @@ const TREE_DATA = {
           "role": "Mother",
           "status": "dead",
           "age": "52",
-          "parentId": "g_mat",
+          "parentId": "gp_mat",
           "ismother": true
         },
         {
@@ -1000,7 +1003,7 @@ const TREE_DATA = {
           "label": "Dyfnarth",
           "status": "alive",
           "ghost": true,
-          "parentId": "g_mat"
+          "parentId": "gp_mat"
         }
       ],
       [
