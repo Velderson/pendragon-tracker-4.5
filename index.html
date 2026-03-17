@@ -838,6 +838,34 @@ function buildFamilyTree(charName){
   const pcNode     = allNodes.find(n => n.pc);
   // Player knights' fathers are always dead
   if(fatherNode) fatherNode.status = 'dead';
+
+  // ── Inject placeholder grandparent nodes if missing ──────────
+  // So the layout always has a paternal root (right) and maternal root (left).
+  const fatherGi = fatherNode ? genIndex.get(fatherNode.id) : -1;
+  const motherGi = motherNode ? genIndex.get(motherNode.id) : -1;
+  const parGi    = fatherGi >= 0 ? fatherGi : motherGi >= 0 ? motherGi : -1;
+  if(parGi > 0){
+    const gpGi = parGi - 1;
+    const hasGpPat = data.generations[gpGi] && data.generations[gpGi].some(n => n.id === 'gp_pat');
+    const hasGpMat = data.generations[gpGi] && data.generations[gpGi].some(n => n.id === 'gp_mat');
+    if(!hasGpPat && fatherNode){
+      const placeholder = {id:'gp_pat', label:'Grandfather', role:'Paternal Grandparents', status:'dead', ghost:true};
+      if(!data.generations[gpGi]) data.generations[gpGi] = [];
+      data.generations[gpGi].push(placeholder);
+      allNodes.push(placeholder);
+      genIndex.set('gp_pat', gpGi);
+      fatherNode.parentId = 'gp_pat';
+    }
+    if(!hasGpMat && motherNode){
+      const placeholder = {id:'gp_mat', label:'Grandmother', role:'Maternal Grandparents', status:'dead', ghost:true};
+      if(!data.generations[gpGi]) data.generations[gpGi] = [];
+      data.generations[gpGi].unshift(placeholder);
+      allNodes.push(placeholder);
+      genIndex.set('gp_mat', gpGi);
+      motherNode.parentId = 'gp_mat';
+    }
+  }
+  rebuildChildren();
   if(fatherNode && pcNode){
     const pcGen = genIndex.get(pcNode.id);
     const parGen = genIndex.get(fatherNode.id);
@@ -849,189 +877,189 @@ function buildFamilyTree(charName){
     }
   }
 
-  // ── 2. Build parent→children map (data order preserved) ─────
+  // ── 2. Build parent→children map (rebuilt after placeholder injection) ──
   const children = new Map(); // parentId → [childId, ...]
-  allNodes.forEach(n => {
-    if(n.parentId){
-      if(!children.has(n.parentId)) children.set(n.parentId, []);
-      children.get(n.parentId).push(n.id);
-    }
-  });
+  function rebuildChildren(){
+    children.clear();
+    allNodes.forEach(n => {
+      if(n.parentId){
+        if(!children.has(n.parentId)) children.set(n.parentId, []);
+        if(!children.get(n.parentId).includes(n.id))
+          children.get(n.parentId).push(n.id);
+      }
+    });
+  }
+  rebuildChildren();
 
-  // ── 3. Identify "family units" per generation ────────────────
-  // A family unit = a parent + its children in the next generation.
-  // Nodes with no parent in the previous generation are "roots" at their gen.
-  // We lay out each generation as an ordered sequence of groups, where each group
-  // is the children of one parent, centred under that parent.
+  // ── 3. Order generations & assign x positions ──────────────────────────────
+  //
+  // Strategy:
+  //   • Tag every node as "paternal" (descends from father) or "maternal" (from mother)
+  //   • In every generation: maternal nodes go LEFT, paternal nodes go RIGHT
+  //   • PC + spouse always end up in the middle (between mat and pat sides)
+  //   • Couples (spouseOf) are always placed immediately adjacent
+  //   • Children are grouped & centred under their parent
+  // ─────────────────────────────────────────────────────────────────────────────
 
-  // Collect all nodes at each generation, in a stable order that respects
-  // parent ordering from the previous generation.
   const numGens = data.generations.length;
 
-  // ordered list of node-ids per generation (determined below)
-  const genOrder = data.generations.map(gen => gen.map(n => n.id));
+  // ── 3a. Tag each node as paternal / maternal / pc / child-of-pc ──
+  // We walk from father/mother outward to tag their whole subtrees.
+  const side = new Map(); // id → 'pat' | 'mat' | 'pc' | 'child'
 
-  // ── 3a. Reorder gen 0: maternal grandparents LEFT, paternal grandparents RIGHT ──
-  // This cascades down so mother ends up left of father, maternal cousins left of PC.
-  if(fatherNode && motherNode){
-    function ancestorInGen0(nodeId){
-      let cur = allNodes.find(n => n.id === nodeId);
-      while(cur){
-        if(genIndex.get(cur.id) === 0) return cur.id;
-        if(!cur.parentId) break;
-        cur = allNodes.find(n => n.id === cur.parentId);
-      }
-      return null;
-    }
-    const patGp = ancestorInGen0(fatherNode.id);
-    const matGp = ancestorInGen0(motherNode.id);
-    if(patGp && matGp && patGp !== matGp){
-      const g0 = genOrder[0];
-      const others = g0.filter(id => id !== patGp && id !== matGp);
-      genOrder[0] = [matGp, ...others, patGp];
+  function tagSubtree(rootId, label){
+    const queue = [rootId];
+    while(queue.length){
+      const id = queue.shift();
+      if(side.has(id)) continue;
+      side.set(id, label);
+      // tag spouses on the same side
+      allNodes.forEach(n => { if(n.spouseOf === id) side.set(n.id, label); });
+      // tag children
+      (children.get(id)||[]).forEach(cid => queue.push(cid));
     }
   }
 
-  // Sort each generation so children appear grouped under their parent,
-  // in the same order as the parent appears in the previous generation.
+  // Also tag ancestors of father as 'pat', ancestors of mother as 'mat'
+  function tagAncestors(nodeId, label){
+    let cur = allNodes.find(n => n.id === nodeId);
+    while(cur){
+      if(!side.has(cur.id)) side.set(cur.id, label);
+      // also tag the spouse of this ancestor
+      allNodes.forEach(n => { if(n.spouseOf === cur.id && !side.has(n.id)) side.set(n.id, label); });
+      if(!cur.parentId) break;
+      cur = allNodes.find(n => n.id === cur.parentId);
+    }
+  }
+
+  if(fatherNode){ tagSubtree(fatherNode.id, 'pat'); tagAncestors(fatherNode.id, 'pat'); }
+  if(motherNode){ tagSubtree(motherNode.id, 'mat'); tagAncestors(motherNode.id, 'mat'); }
+  if(pcNode){
+    side.set(pcNode.id, 'pc');
+    // PC's spouse(s)
+    allNodes.forEach(n => { if(n.spouseOf === pcNode.id) side.set(n.id, 'pc'); });
+    // PC's children
+    (children.get(pcNode.id)||[]).forEach(cid => {
+      const queue = [cid];
+      while(queue.length){ const id=queue.shift(); side.set(id,'child'); (children.get(id)||[]).forEach(c=>queue.push(c)); }
+    });
+  }
+  // fallback: anything untagged stays as-is (use 'mat' so it goes left)
+  allNodes.forEach(n => { if(!side.has(n.id)) side.set(n.id, 'mat'); });
+
+  // ── 3b. Within each generation, order: mat | pc | pat ──
+  const genOrder = data.generations.map(gen => {
+    const ids = gen.map(n => n.id);
+    const mat  = ids.filter(id => side.get(id) === 'mat');
+    const pc   = ids.filter(id => side.get(id) === 'pc');
+    const pat  = ids.filter(id => side.get(id) === 'pat');
+    const child= ids.filter(id => side.get(id) === 'child');
+    return [...mat, ...pc, ...pat, ...child];
+  });
+
+  // ── 3c. Within each side-group, keep children grouped under their parent ──
   for(let gi = 1; gi < numGens; gi++){
     const prevOrder = genOrder[gi-1];
     const thisIds   = new Set(genOrder[gi]);
 
-    // Build ordered list: for each parent in prevOrder, insert its children
-    // in their original relative order; then append any orphans (no parent above).
-    const ordered = [];
-    const placed  = new Set();
-
-    prevOrder.forEach(pid => {
-      const kids = (children.get(pid) || []).filter(id => thisIds.has(id));
-      kids.forEach(kid => { if(!placed.has(kid)){ ordered.push(kid); placed.add(kid); } });
-    });
-    // Append nodes with no parent at prev gen (spouses, PC itself, etc.)
-    genOrder[gi].forEach(id => { if(!placed.has(id)){ ordered.push(id); placed.add(id); } });
-
-    genOrder[gi] = ordered;
-  }
-
-  // ── 3b. In the PC's generation: move PC + spouse(s) to the centre ──
-  if(pcNode){
-    const pcGi = genIndex.get(pcNode.id);
-    const ids = [...genOrder[pcGi]];
-    const pcId = pcNode.id;
-    const pcSpouses = allNodes.filter(n => n.spouseOf === pcId).map(n => n.id);
-    const pcGroup = [pcId, ...pcSpouses.filter(id => ids.includes(id))];
-    const rest = ids.filter(id => !pcGroup.includes(id));
-    function hasPatAncestor(nodeId){
-      let cur = allNodes.find(n => n.id === nodeId);
-      while(cur){
-        if(cur.isfather) return true;
-        if(!cur.parentId) break;
-        cur = allNodes.find(n => n.id === cur.parentId);
-      }
-      return false;
+    // For each side separately, sort by parent order
+    function sortByParent(ids){
+      const ordered = [], placed = new Set();
+      prevOrder.forEach(pid => {
+        const kids = (children.get(pid)||[]).filter(id => ids.includes(id));
+        kids.forEach(id => { if(!placed.has(id)){ ordered.push(id); placed.add(id); } });
+      });
+      ids.forEach(id => { if(!placed.has(id)){ ordered.push(id); placed.add(id); } });
+      return ordered;
     }
-    const patSide = rest.filter(id => hasPatAncestor(id));
-    const matSide = rest.filter(id => !hasPatAncestor(id));
-    genOrder[pcGi] = [...matSide, ...pcGroup, ...patSide];
+
+    const matIds   = genOrder[gi].filter(id => side.get(id)==='mat');
+    const pcIds    = genOrder[gi].filter(id => side.get(id)==='pc');
+    const patIds   = genOrder[gi].filter(id => side.get(id)==='pat');
+    const childIds = genOrder[gi].filter(id => side.get(id)==='child');
+
+    genOrder[gi] = [...sortByParent(matIds), ...pcIds, ...sortByParent(patIds), ...childIds];
   }
 
-  // ── 3c. Ensure spouses are always adjacent to their partner in every generation ──
+  // ── 3d. Ensure spouses always adjacent to their partner ──
   for(let gi = 0; gi < numGens; gi++){
     const ids = [...genOrder[gi]];
     for(let i = 0; i < ids.length; i++){
       const n = allNodes.find(x => x.id === ids[i]);
       if(!n || !n.spouseOf) continue;
       const partnerIdx = ids.indexOf(n.spouseOf);
-      if(partnerIdx === -1) continue;
-      if(Math.abs(partnerIdx - i) === 1) continue; // already adjacent
-      // Remove spouse from current position and insert right after partner
+      if(partnerIdx === -1 || Math.abs(partnerIdx - i) === 1) continue;
       ids.splice(i, 1);
-      const newPartnerIdx = ids.indexOf(n.spouseOf);
-      ids.splice(newPartnerIdx + 1, 0, n.id);
+      const newPI = ids.indexOf(n.spouseOf);
+      ids.splice(newPI + 1, 0, n.id);
       i = Math.max(0, i - 1);
     }
     genOrder[gi] = ids;
   }
 
-  // ── 4. Calculate x positions with Reingold–Tilford-like spacing ─
-  // subtreeWidth(id) = max(BW, sum of subtreeWidths of children + gaps)
-  // But we only look one generation deep per node for simplicity, since
-  // the data is already generation-indexed.
+  // ── 4. Assign x positions ────────────────────────────────────
+  // For each generation, place nodes left-to-right in genOrder,
+  // centring each node's children-group under the parent.
 
-  function childWidth(id){
-    // Width needed to accommodate all descendants of this node
-    // Only direct children here — the recursive case is handled per-generation
-    const kids = (children.get(id) || []).filter(k => genIndex.has(k));
+  function subtreeW(id){
+    const kids = (children.get(id)||[]).filter(k => genIndex.has(k));
     if(!kids.length) return BW;
-    // Sum of child subtree widths + gaps between them
-    const total = kids.reduce((s, k) => s + childWidth(k), 0) + H_GAP * (kids.length - 1);
-    return Math.max(BW, total);
+    return Math.max(BW, kids.reduce((s,k) => s + subtreeW(k), 0) + H_GAP*(kids.length-1));
   }
 
-  // Assign x positions generation by generation, top-down
-  // For each gen, place nodes in genOrder[gi], respecting parent centering.
-  const xPos = new Map(); // id → x (centre)
+  const xPos = new Map();
 
-  // Gen 0: lay out evenly spaced
+  // Gen 0: space by subtree width
   {
     const ids = genOrder[0];
-    // Compute widths for each node's subtree
-    const widths = ids.map(id => childWidth(id));
+    const widths = ids.map(id => subtreeW(id));
     let cx = 0;
     ids.forEach((id, i) => {
-      cx += widths[i] / 2;
+      cx += widths[i]/2;
       xPos.set(id, cx);
-      cx += widths[i] / 2 + H_GAP;
+      cx += widths[i]/2 + H_GAP;
     });
   }
 
-  // Gens 1+: position children centred under parents, then resolve overlaps
+  // Gens 1+: centre under parent, then resolve overlaps
   for(let gi = 1; gi < numGens; gi++){
     const ids = genOrder[gi];
     if(!ids.length) continue;
 
-    // First pass: assign ideal x = centre of parent, or spaced from neighbours
     const ideal = new Map();
-    ids.forEach(id => {
-      const n = byId(id);
-      if(n && n.parentId && xPos.has(n.parentId)){
-        // Position relative to sibling group centre
-        const siblings = (children.get(n.parentId) || []).filter(k => genIndex.get(k) === gi);
-        const sibWidths = siblings.map(s => childWidth(s));
-        const totalW = sibWidths.reduce((a,b) => a+b, 0) + H_GAP * (siblings.length - 1);
-        const startX = xPos.get(n.parentId) - totalW / 2;
-        let cx = startX;
-        siblings.forEach((sid, si) => {
-          const cx_mid = cx + sibWidths[si] / 2;
-          ideal.set(sid, cx_mid);
-          cx += sibWidths[si] + H_GAP;
-        });
-      } else if(!ideal.has(id)){
-        // No parent above — will be resolved in overlap pass
-        ideal.set(id, null);
-      }
+
+    // For each parent in prev gen, centre its children group under it
+    genOrder[gi-1].forEach(pid => {
+      const kids = (children.get(pid)||[]).filter(k => genOrder[gi].includes(k));
+      if(!kids.length) return;
+      const kw = kids.map(k => subtreeW(k));
+      const totalW = kw.reduce((a,b)=>a+b,0) + H_GAP*(kids.length-1);
+      let cx = (xPos.get(pid)||0) - totalW/2;
+      kids.forEach((kid,i) => {
+        ideal.set(kid, cx + kw[i]/2);
+        cx += kw[i] + H_GAP;
+      });
     });
 
-    // For nodes with no parent, assign provisional x = their subtreeWidth centre
-    // placed to the right of previous nodes
+    // Nodes with no parent placed provisionally
     let cursor = 0;
     ids.forEach(id => {
-      if(ideal.get(id) === null || ideal.get(id) === undefined){
-        const w = childWidth(id);
+      if(!ideal.has(id)){
+        const w = subtreeW(id);
         ideal.set(id, cursor + w/2);
         cursor += w + H_GAP;
       } else {
-        cursor = Math.max(cursor, (ideal.get(id) || 0) + childWidth(id)/2 + H_GAP);
+        cursor = Math.max(cursor, ideal.get(id) + subtreeW(id)/2 + H_GAP);
       }
     });
 
-    // Second pass: resolve overlaps left-to-right, maintaining min gap
-    const positions = ids.map(id => ideal.get(id) || 0);
+    // Resolve overlaps left-to-right
+    const positions = ids.map(id => ideal.get(id)||0);
     for(let i = 1; i < positions.length; i++){
       const minX = positions[i-1] + BW/2 + H_GAP + BW/2;
       if(positions[i] < minX) positions[i] = minX;
     }
-    ids.forEach((id, i) => xPos.set(id, positions[i]));
+    ids.forEach((id,i) => xPos.set(id, positions[i]));
   }
 
   // ── 5. Compute total canvas size ────────────────────────────
