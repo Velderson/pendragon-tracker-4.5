@@ -865,20 +865,8 @@ function buildFamilyTree(charName){
       motherNode.parentId = 'gp_mat';
     }
   }
-  rebuildChildren();
-  if(fatherNode && pcNode){
-    const pcGen = genIndex.get(pcNode.id);
-    const parGen = genIndex.get(fatherNode.id);
-    if(pcGen !== undefined && parGen !== undefined && pcGen === parGen + 1){
-      // Any node in pcGen with no parentId and no spouseOf → child of father
-      data.generations[pcGen].forEach(n => {
-        if(!n.parentId && !n.spouseOf) n.parentId = fatherNode.id;
-      });
-    }
-  }
-
-  // ── 2. Build parent→children map (rebuilt after placeholder injection) ──
-  const children = new Map(); // parentId → [childId, ...]
+  // ── 2. Build parent→children map ──────────────────────────────
+  const children = new Map();
   function rebuildChildren(){
     children.clear();
     allNodes.forEach(n => {
@@ -888,6 +876,17 @@ function buildFamilyTree(charName){
           children.get(n.parentId).push(n.id);
       }
     });
+  }
+  rebuildChildren();
+
+  if(fatherNode && pcNode){
+    const pcGen = genIndex.get(pcNode.id);
+    const parGen = genIndex.get(fatherNode.id);
+    if(pcGen !== undefined && parGen !== undefined && pcGen === parGen + 1){
+      data.generations[pcGen].forEach(n => {
+        if(!n.parentId && !n.spouseOf) n.parentId = fatherNode.id;
+      });
+    }
   }
   rebuildChildren();
 
