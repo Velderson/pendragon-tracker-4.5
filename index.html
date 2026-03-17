@@ -890,107 +890,102 @@ function buildFamilyTree(charName){
   }
   rebuildChildren();
 
-  // ── 3. Order generations & assign x positions ──────────────────────────────
+  // ── 3. Order nodes within each generation ───────────────────
   //
-  // Strategy:
-  //   • Tag every node as "paternal" (descends from father) or "maternal" (from mother)
-  //   • In every generation: maternal nodes go LEFT, paternal nodes go RIGHT
-  //   • PC + spouse always end up in the middle (between mat and pat sides)
-  //   • Couples (spouseOf) are always placed immediately adjacent
-  //   • Children are grouped & centred under their parent
-  // ─────────────────────────────────────────────────────────────────────────────
+  // Target layout per row:
+  //   Gen 0: [mat grandparents] ... [pat grandparents]
+  //   Gen 1: [pat uncles] [Father] | [Mother] [mat uncles]
+  //   Gen 2: [pat cousins] [PC] [Wife] [mat cousins]
+  //   Gen 3: [children]
+  //
+  // Rule: paternal side LEFT, maternal side RIGHT, PC+spouse centre.
+  // ─────────────────────────────────────────────────────────────
 
   const numGens = data.generations.length;
 
-  // ── 3a. Tag each node as paternal / maternal / pc / child-of-pc ──
-  // We walk from father/mother outward to tag their whole subtrees.
-  const side = new Map(); // id → 'pat' | 'mat' | 'pc' | 'child'
+  // ── 3a. Tag every node with its side ─────────────────────────
+  // 'pat' = paternal family, 'mat' = maternal family, 'pc' = PC+spouse, 'child' = PC's descendants
+  const side = new Map();
 
-  function tagSubtree(rootId, label){
+  function tagTree(rootId, label){
     const queue = [rootId];
     while(queue.length){
       const id = queue.shift();
       if(side.has(id)) continue;
       side.set(id, label);
-      // tag spouses on the same side
-      allNodes.forEach(n => { if(n.spouseOf === id) side.set(n.id, label); });
-      // tag children
-      (children.get(id)||[]).forEach(cid => queue.push(cid));
+      allNodes.forEach(n => { if(n.spouseOf === id && !side.has(n.id)) side.set(n.id, label); });
+      (children.get(id)||[]).forEach(c => queue.push(c));
     }
   }
 
-  // Also tag ancestors of father as 'pat', ancestors of mother as 'mat'
-  function tagAncestors(nodeId, label){
+  // Tag upward from father/mother to grandparents
+  function tagUp(nodeId, label){
     let cur = allNodes.find(n => n.id === nodeId);
     while(cur){
       if(!side.has(cur.id)) side.set(cur.id, label);
-      // also tag the spouse of this ancestor
       allNodes.forEach(n => { if(n.spouseOf === cur.id && !side.has(n.id)) side.set(n.id, label); });
       if(!cur.parentId) break;
       cur = allNodes.find(n => n.id === cur.parentId);
     }
   }
 
-  if(fatherNode){ tagSubtree(fatherNode.id, 'pat'); tagAncestors(fatherNode.id, 'pat'); }
-  if(motherNode){ tagSubtree(motherNode.id, 'mat'); tagAncestors(motherNode.id, 'mat'); }
+  if(fatherNode){ tagTree(fatherNode.id, 'pat'); tagUp(fatherNode.id, 'pat'); }
+  if(motherNode){ tagTree(motherNode.id, 'mat'); tagUp(motherNode.id, 'mat'); }
   if(pcNode){
     side.set(pcNode.id, 'pc');
-    // PC's spouse(s)
     allNodes.forEach(n => { if(n.spouseOf === pcNode.id) side.set(n.id, 'pc'); });
-    // PC's children
-    (children.get(pcNode.id)||[]).forEach(cid => {
-      const queue = [cid];
-      while(queue.length){ const id=queue.shift(); side.set(id,'child'); (children.get(id)||[]).forEach(c=>queue.push(c)); }
-    });
+    function tagChildren(id){
+      (children.get(id)||[]).forEach(cid => { side.set(cid,'child'); tagChildren(cid); });
+    }
+    tagChildren(pcNode.id);
   }
-  // fallback: anything untagged stays as-is (use 'mat' so it goes left)
+  // Fallback
   allNodes.forEach(n => { if(!side.has(n.id)) side.set(n.id, 'mat'); });
 
-  // ── 3b. Within each generation, order: mat | pc | pat ──
+  // ── 3b. Order each generation: pat-LEFT | pc-CENTRE | mat-RIGHT | children-CENTRE ──
   const genOrder = data.generations.map(gen => {
     const ids = gen.map(n => n.id);
-    const mat  = ids.filter(id => side.get(id) === 'mat');
-    const pc   = ids.filter(id => side.get(id) === 'pc');
-    const pat  = ids.filter(id => side.get(id) === 'pat');
-    const child= ids.filter(id => side.get(id) === 'child');
-    return [...mat, ...pc, ...pat, ...child];
+    const pat   = ids.filter(id => side.get(id) === 'pat');
+    const pc    = ids.filter(id => side.get(id) === 'pc');
+    const mat   = ids.filter(id => side.get(id) === 'mat');
+    const child = ids.filter(id => side.get(id) === 'child');
+    return [...pat, ...pc, ...mat, ...child];
   });
 
-  // ── 3c. Within each side-group, keep children grouped under their parent ──
+  // ── 3c. Within pat/mat groups, keep children grouped under their parent ──
   for(let gi = 1; gi < numGens; gi++){
     const prevOrder = genOrder[gi-1];
-    const thisIds   = new Set(genOrder[gi]);
 
-    // For each side separately, sort by parent order
     function sortByParent(ids){
       const ordered = [], placed = new Set();
       prevOrder.forEach(pid => {
-        const kids = (children.get(pid)||[]).filter(id => ids.includes(id));
-        kids.forEach(id => { if(!placed.has(id)){ ordered.push(id); placed.add(id); } });
+        (children.get(pid)||[]).filter(id => ids.includes(id)).forEach(id => {
+          if(!placed.has(id)){ ordered.push(id); placed.add(id); }
+        });
       });
       ids.forEach(id => { if(!placed.has(id)){ ordered.push(id); placed.add(id); } });
       return ordered;
     }
 
-    const matIds   = genOrder[gi].filter(id => side.get(id)==='mat');
-    const pcIds    = genOrder[gi].filter(id => side.get(id)==='pc');
-    const patIds   = genOrder[gi].filter(id => side.get(id)==='pat');
-    const childIds = genOrder[gi].filter(id => side.get(id)==='child');
+    const pat   = genOrder[gi].filter(id => side.get(id)==='pat');
+    const pc    = genOrder[gi].filter(id => side.get(id)==='pc');
+    const mat   = genOrder[gi].filter(id => side.get(id)==='mat');
+    const child = genOrder[gi].filter(id => side.get(id)==='child');
 
-    genOrder[gi] = [...sortByParent(matIds), ...pcIds, ...sortByParent(patIds), ...childIds];
+    genOrder[gi] = [...sortByParent(pat), ...pc, ...sortByParent(mat), ...sortByParent(child)];
   }
 
-  // ── 3d. Ensure spouses always adjacent to their partner ──
+  // ── 3d. Ensure spouses are always adjacent ────────────────────
   for(let gi = 0; gi < numGens; gi++){
     const ids = [...genOrder[gi]];
     for(let i = 0; i < ids.length; i++){
       const n = allNodes.find(x => x.id === ids[i]);
       if(!n || !n.spouseOf) continue;
-      const partnerIdx = ids.indexOf(n.spouseOf);
-      if(partnerIdx === -1 || Math.abs(partnerIdx - i) === 1) continue;
+      const pi = ids.indexOf(n.spouseOf);
+      if(pi === -1 || Math.abs(pi - i) === 1) continue;
       ids.splice(i, 1);
-      const newPI = ids.indexOf(n.spouseOf);
-      ids.splice(newPI + 1, 0, n.id);
+      const newPi = ids.indexOf(n.spouseOf);
+      ids.splice(newPi + 1, 0, n.id);
       i = Math.max(0, i - 1);
     }
     genOrder[gi] = ids;
