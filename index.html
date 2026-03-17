@@ -1678,6 +1678,7 @@ let RELATIONS = (()=>{
     {id:'r33', a:'Prince Madoc',         b:'Sygarius',              type:'rival',   scope:['political'],            label:'Madoc refused Syagrius\'s plea to march on Rouen in 488; diplomatic rift forming'},
     {id:'r34', a:'King Uther Pendragon', b:'Lot',                   type:'rival',   scope:['political'],            label:'Lot avoided battle in the north in 488; Uther is aware and suspicious of his loyalty'},
     {id:'r35', a:'King Uther Pendragon', b:'King Claudas',          type:'hostile', scope:['political','military'], label:'Britain\'s 488 campaign in Frankland is directed against Claudas\'s forces; a formidable enemy who has never lost a battle'},
+    {id:'r36', a:'Count Roderick',       b:'Mellyr',                type:'vassal',  scope:['political','affairs'],  label:'PC Mellyr holds Newton Tony under Roderick'},
   ];
 })();
 
@@ -1710,7 +1711,7 @@ const FACTION_NODE_COLORS = {
 };
 
 // ── Player characters — names must match NPC data ──
-const PC_NAMES = ['Agragan','Rhydian','Gwegon','Timotheus'];
+const PC_NAMES = ['Agragan','Rhydian','Gwegon','Timotheus','Mellyr'];
 
 // ─── RELATIONS SECTION ───────────────────────────────────────────────────────
 let webInitialized = false;
@@ -1929,12 +1930,18 @@ function renderConflicts(){
 
     // Enfeoffed manor holders under PCs
     const enfeoffed = {
-      Agragan:   [{manor:'Horton',     holder:'Sir Rhodri',  note:'Knight (just but cruel)'},
-                  {manor:'Tisbury',    holder:'Sir Tarthan', note:'Knight (enfeoffed)'}],
-      Gwegon:    [{manor:'Shrewton',   holder:'Sir Marchlew',note:'Owes military service'}],
-      Timotheus: [{manor:'Tidcombe',   holder:'—',           note:'Held directly'},
-                  {manor:'Fosbury',    holder:'—',           note:'Held directly'}],
+      Agragan:   [{manor:'Horton',     holder:'Sir Rodri',   note:'Demesne manor'},
+                  {manor:'Tisbury',    holder:'Sir Tartan',  note:'Enfeoffed manor'}],
+      Gwegon:    [{manor:'Shrewton',   holder:'Sir Marchlew',note:'Enfeoffed manor'},
+                  {manor:'Allington',  holder:'Sir Clydno',  note:'Demesne manor'}],
+      Timotheus: [{manor:'Tidcombe',   holder:'Syr Cynwal',  note:'Enfeoffed manor'},
+                  {manor:'Fosbury',    holder:'Syr Gwair',   note:'Enfeoffed manor'}],
       Rhydian:   [],
+      Mellyr:    [],
+    };
+    const pcManors = {
+      Agragan:'Cholderton', Rhydian:'Stapleford', Gwegon:'Broughton',
+      Timotheus:'Laverstock', Mellyr:'Newton Tony'
     };
     const pcCards = PC_NAMES.map(name=>{
       const ef = enfeoffed[name]||[];
@@ -1943,7 +1950,7 @@ function renderConflicts(){
       </div>` : '';
       return `<div style="background:#000000;border:2px solid var(--gold);border-radius:3px;padding:.65rem .9rem;min-width:130px;flex:1">
         <div style="font-family:'Cinzel',serif;font-size:.85rem;color:var(--gold-light);font-weight:700">${name}</div>
-        <div style="font-size:.7rem;color:#c9b48a;font-style:italic;margin-top:.08rem">PC Knight of Salisbury</div>
+        <div style="font-size:.7rem;color:#c9b48a;font-style:italic;margin-top:.08rem">PC Knight · ${pcManors[name]||'Salisbury'}</div>
         <div style="font-size:.64rem;color:var(--gold);margin-top:.22rem">⚔ Player Character</div>
         ${efHtml}
       </div>`;
