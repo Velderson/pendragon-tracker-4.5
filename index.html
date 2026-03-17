@@ -836,6 +836,8 @@ function buildFamilyTree(charName){
   const fatherNode = allNodes.find(n => n.isfather);
   const motherNode = allNodes.find(n => n.ismother);
   const pcNode     = allNodes.find(n => n.pc);
+  // Player knights' fathers are always dead
+  if(fatherNode) fatherNode.status = 'dead';
   if(fatherNode && pcNode){
     const pcGen = genIndex.get(pcNode.id);
     const parGen = genIndex.get(fatherNode.id);
@@ -869,6 +871,27 @@ function buildFamilyTree(charName){
   // ordered list of node-ids per generation (determined below)
   const genOrder = data.generations.map(gen => gen.map(n => n.id));
 
+  // ── 3a. Reorder gen 0: maternal grandparents LEFT, paternal grandparents RIGHT ──
+  // This cascades down so mother ends up left of father, maternal cousins left of PC.
+  if(fatherNode && motherNode){
+    function ancestorInGen0(nodeId){
+      let cur = allNodes.find(n => n.id === nodeId);
+      while(cur){
+        if(genIndex.get(cur.id) === 0) return cur.id;
+        if(!cur.parentId) break;
+        cur = allNodes.find(n => n.id === cur.parentId);
+      }
+      return null;
+    }
+    const patGp = ancestorInGen0(fatherNode.id);
+    const matGp = ancestorInGen0(motherNode.id);
+    if(patGp && matGp && patGp !== matGp){
+      const g0 = genOrder[0];
+      const others = g0.filter(id => id !== patGp && id !== matGp);
+      genOrder[0] = [matGp, ...others, patGp];
+    }
+  }
+
   // Sort each generation so children appear grouped under their parent,
   // in the same order as the parent appears in the previous generation.
   for(let gi = 1; gi < numGens; gi++){
@@ -888,6 +911,46 @@ function buildFamilyTree(charName){
     genOrder[gi].forEach(id => { if(!placed.has(id)){ ordered.push(id); placed.add(id); } });
 
     genOrder[gi] = ordered;
+  }
+
+  // ── 3b. In the PC's generation: move PC + spouse(s) to the centre ──
+  if(pcNode){
+    const pcGi = genIndex.get(pcNode.id);
+    const ids = [...genOrder[pcGi]];
+    const pcId = pcNode.id;
+    const pcSpouses = allNodes.filter(n => n.spouseOf === pcId).map(n => n.id);
+    const pcGroup = [pcId, ...pcSpouses.filter(id => ids.includes(id))];
+    const rest = ids.filter(id => !pcGroup.includes(id));
+    function hasPatAncestor(nodeId){
+      let cur = allNodes.find(n => n.id === nodeId);
+      while(cur){
+        if(cur.isfather) return true;
+        if(!cur.parentId) break;
+        cur = allNodes.find(n => n.id === cur.parentId);
+      }
+      return false;
+    }
+    const patSide = rest.filter(id => hasPatAncestor(id));
+    const matSide = rest.filter(id => !hasPatAncestor(id));
+    genOrder[pcGi] = [...matSide, ...pcGroup, ...patSide];
+  }
+
+  // ── 3c. Ensure spouses are always adjacent to their partner in every generation ──
+  for(let gi = 0; gi < numGens; gi++){
+    const ids = [...genOrder[gi]];
+    for(let i = 0; i < ids.length; i++){
+      const n = allNodes.find(x => x.id === ids[i]);
+      if(!n || !n.spouseOf) continue;
+      const partnerIdx = ids.indexOf(n.spouseOf);
+      if(partnerIdx === -1) continue;
+      if(Math.abs(partnerIdx - i) === 1) continue; // already adjacent
+      // Remove spouse from current position and insert right after partner
+      ids.splice(i, 1);
+      const newPartnerIdx = ids.indexOf(n.spouseOf);
+      ids.splice(newPartnerIdx + 1, 0, n.id);
+      i = Math.max(0, i - 1);
+    }
+    genOrder[gi] = ids;
   }
 
   // ── 4. Calculate x positions with Reingold–Tilford-like spacing ─
@@ -1186,14 +1249,15 @@ function ftDrawTree(){
     ctx.setLineDash([]);
     ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
 
-    // Deceased strikethrough
+    // Deceased strikethrough — big bold red X
     if(n.status === 'dead' && !n.ghost){
       ctx.save();
-      ctx.globalAlpha = 0.22;
-      ctx.strokeStyle = '#cc3333';
-      ctx.lineWidth   = 0.8 / ftZoom;
-      ctx.beginPath(); ctx.moveTo(nx+3, ny+3); ctx.lineTo(nx+BW-3, ny+BH-3); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(nx+BW-3, ny+3); ctx.lineTo(nx+3, ny+BH-3); ctx.stroke();
+      ctx.globalAlpha = 0.85;
+      ctx.strokeStyle = '#dd2222';
+      ctx.lineWidth   = 3 / ftZoom;
+      ctx.lineCap     = 'round';
+      ctx.beginPath(); ctx.moveTo(nx+4, ny+4); ctx.lineTo(nx+BW-4, ny+BH-4); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(nx+BW-4, ny+4); ctx.lineTo(nx+4, ny+BH-4); ctx.stroke();
       ctx.restore();
     }
 
@@ -1274,7 +1338,7 @@ function initFamilyTreeCanvas(charName){
   const cont = ftCanvas.parentElement;
   ftDpr = window.devicePixelRatio || 1;
   ftW   = cont.clientWidth || 900;
-  ftH   = Math.max(620, Math.round(ftW * 0.68));
+  ftH   = Math.max(800, Math.round(ftW * 0.85));
   ftCanvas.width        = ftW * ftDpr;
   ftCanvas.height       = ftH * ftDpr;
   ftCanvas.style.width  = ftW + 'px';
@@ -2680,7 +2744,7 @@ function renderEstatesPanel(charName) {
     return {
       year: y,
       income:   rows.reduce((s,r)=>s+(r.income||0),0),
-      expenses: rows.reduce((s,r)=>s+(r.lifestyleCost||0)+(r.improvMaint||0)+(r.family||0)+(r.improvBuild||0),0),
+      expenses: rows.reduce((s,r)=>s+(r.lifestyleCost||0)+(r.improvMaint||0)+(r.family||0)+(r.improvBuild||0)+Math.abs(r.misc||0),0),
       final:    rows.reduce((s,r)=>s+(r.final||0),0),
     };
   });
@@ -2703,7 +2767,7 @@ function renderEstatesPanel(charName) {
         <td style="font-family:'Cinzel',serif;font-size:.72rem;color:#3a2008;padding:.28rem .4rem">${h.year}</td>
         <td style="padding:.28rem .4rem"><span style="font-size:.72rem;color:${harvestColor}">${h.harvestResult||'—'}</span></td>
         <td style="font-size:.78rem;color:#2a5a2a;text-align:right;padding:.28rem .4rem">${h.income||0}£</td>
-        <td style="font-size:.78rem;color:#6a2a2a;text-align:right;padding:.28rem .4rem">${(h.lifestyleCost||0)+(h.improvMaint||0)+(h.family||0)+(h.improvBuild||0)}£</td>
+        <td style="font-size:.78rem;color:#6a2a2a;text-align:right;padding:.28rem .4rem" title="Lifestyle: ${h.lifestyleCost||0}£  |  Impr. Maint: ${h.improvMaint||0}£  |  Family: ${h.family||0}£  |  Build: ${h.improvBuild||0}£  |  Misc: ${h.misc||0}£">${(h.lifestyleCost||0)+(h.improvMaint||0)+(h.family||0)+(h.improvBuild||0)+Math.abs(h.misc||0)}£</td>
         <td style="font-size:.84rem;font-weight:700;color:${netColor};text-align:right;padding:.28rem .4rem">${h.final>=0?'+':''}${h.final}£</td>
         <td style="font-size:.7rem;color:#3d2a0e;font-style:italic;max-width:200px;overflow:hidden;text-overflow:ellipsis;padding:.28rem .4rem">${h.notes||''}</td>
       </tr>`;
@@ -2869,7 +2933,7 @@ function renderEconomics() {
     return {
       year: y,
       income: rows.reduce((s,r) => s + (r.income||0), 0),
-      expenses: rows.reduce((s,r) => s + (r.lifestyleCost||0) + (r.improvMaint||0) + (r.family||0) + (r.improvBuild||0), 0),
+      expenses: rows.reduce((s,r) => s + (r.lifestyleCost||0) + (r.improvMaint||0) + (r.family||0) + (r.improvBuild||0) + Math.abs(r.misc||0), 0),
       final: rows.reduce((s,r) => s + (r.final||0), 0),
     };
   });
@@ -2926,7 +2990,7 @@ function renderEconomics() {
         <td style="font-family:'Cinzel',serif;font-size:.72rem;color:#3a2008;white-space:nowrap">${h.year}</td>
         <td><span style="font-size:.7rem;color:${h.harvestResult==='Great'||h.harvestResult==='Good'?'#1a5010':h.harvestResult==='Bad'||h.harvestResult==='Poor'?'#8a1a1a':'#5a3a10'}">${h.harvestResult||'—'}</span></td>
         <td style="font-size:.78rem;color:#2a5a2a;text-align:right">${h.income||0}£</td>
-        <td style="font-size:.78rem;color:#6a3a2a;text-align:right">${(h.lifestyleCost||0)+(h.improvMaint||0)+(h.family||0)+(h.improvBuild||0)}£</td>
+        <td style="font-size:.78rem;color:#6a3a2a;text-align:right">${(h.lifestyleCost||0)+(h.improvMaint||0)+(h.family||0)+(h.improvBuild||0)+Math.abs(h.misc||0)}£</td>
         <td style="font-size:.82rem;font-weight:600;color:${netColor};text-align:right">${net>=0?'+':''}${net}£</td>
         <td style="font-size:.7rem;color:#3d2a0e;font-style:italic;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${h.notes||''}">${h.notes||''}</td>
       </tr>`;
