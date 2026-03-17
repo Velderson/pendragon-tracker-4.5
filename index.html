@@ -355,7 +355,7 @@ let npcs = [...SPREADSHEET_NPCS, ...savedCustom,
 // Add extra fields to spreadsheet npcs if missing
 // PORTRAITS loaded from portraits.js
 
-npcs = npcs.map(n => ({appearance:'',personality:'',attitude:'',motivation:'',secret:'',misc:n.misc||'',stats:n.stats||'',...n}));
+npcs = npcs.map(n => ({appearance:'',personality:'',attitude:'',motivation:'',secret:'',misc:n.misc||'',stats:n.stats||'',...n, playerHidden: n.playerHidden || (n.playerVisible === false || n.playerVisible === 'false' || n.playerVisible === 'no' || n.playerVisible === 'No')}));
 
 let editingId = null;
 let selectedId = npcs[0]?.id || null;
@@ -1636,49 +1636,49 @@ let RELATIONS = (()=>{
   return [
     // ── Uther's Court internal
     {id:'r1',  a:'King Uther Pendragon',  b:'Gorlois',              type:'hostile', scope:['political','personal'], label:'Uther covets Ygraine; open rivalry threatens war. In 488 Uther calls Gorlois \'the primary culprit\' and Cornwall snubbed the summons to France — escalating fast.'},
-    {id:'r2',  a:'King Uther Pendragon',  b:'Merlin the Magician',  type:'ally',    scope:['political','plot'],     label:'Uther relies on Merlin\'s counsel and magic'},
-    {id:'r3',  a:'King Uther Pendragon',  b:'Ulfius',               type:'ally',    scope:['political'],            label:'Ulfius is Uther\'s most loyal duke'},
-    {id:'r4',  a:'King Uther Pendragon',  b:'Prince Madoc',         type:'ally',    scope:['political','personal'], label:'Madoc is Uther\'s heir and champion'},
-    {id:'r5',  a:'King Uther Pendragon',  b:'Sir Bellias/Brastias', type:'ally',    scope:['political'],            label:'Brastias commands Uther\'s household guard'},
-    {id:'r6',  a:'Merlin the Magician',   b:'Ygraine',              type:'scheme',  scope:['plot'],                 label:'Merlin has taken a cryptic interest in the Duchess of Cornwall'},
-    {id:'r7',  a:'Gorlois',              b:'Ygraine',               type:'ally',    scope:['personal'],             label:'Gorlois and Ygraine are deeply married'},
+    {id:'r2',  a:'King Uther Pendragon', b:'Merlin the Magician', type:'ally',   scope:['political','plot'],     label:'Uther relies on Merlin\'s counsel and magic'},
+    {id:'r3',  a:'King Uther Pendragon', b:'Ulfius',            type:'ally',    scope:['political'],            label:'Ulfius is Uther\'s most loyal duke'},
+    {id:'r4',  a:'King Uther Pendragon', b:'Prince Madoc',      type:'ally',    scope:['political','personal'], label:'Madoc is Uther\'s heir and champion'},
+    {id:'r5',  a:'King Uther Pendragon', b:'Sir Bellias/Brastias', type:'ally', scope:['political'],            label:'Brastias commands Uther\'s household guard'},
+    {id:'r6',  a:'Merlin the Magician',  b:'Ygraine',             type:'scheme', scope:['plot'],              label:'Merlin has taken a cryptic interest in the Duchess of Cornwall'},
+    {id:'r7',  a:'Gorlois',               b:'Ygraine',             type:'ally',   scope:['personal'],          label:'Gorlois and Ygraine are deeply married'},
     // ── Salisbury
-    {id:'r8',  a:'Count Roderick',       b:'Sir Elad',              type:'ally',    scope:['political'],            label:'Elad is Roderick\'s Marshall and right hand'},
-    {id:'r9',  a:'Count Roderick',       b:'Sir Blains',            type:'rival',   scope:['political'],            label:'Blains of Silchester schemes against Roderick\'s influence'},
-    {id:'r10', a:'Count Roderick',       b:'King Uther Pendragon',  type:'vassal',  scope:['political'],            label:'Roderick owes fealty to Uther'},
-    {id:'r11', a:'Count Roderick',       b:'Countess Ellen',        type:'ally',    scope:['personal'],             label:'Devoted marriage; Ellen is his political counsel'},
-    {id:'r12', a:'Sir Hywel',            b:'Sir Jarren',            type:'rival',   scope:['personal'],             label:'Competition for glory and Roderick\'s favour'},
-    {id:'r13', a:'Lady Elaine',          b:'Count Roderick',        type:'complex', scope:['personal'],             label:'Elaine\'s scandalous affairs embarrass the household'},
+    {id:'r8',  a:'Count Roderick',       b:'Sir Elad',          type:'ally',    scope:['political'],            label:'Elad is Roderick\'s Marshall and right hand'},
+    {id:'r9',  a:'Count Roderick',       b:'Sir Blains',        type:'rival',   scope:['political'],            label:'Blains of Silchester schemes against Roderick\'s influence'},
+    {id:'r10', a:'Count Roderick',       b:'King Uther Pendragon', type:'vassal', scope:['political'],          label:'Roderick owes fealty to Uther'},
+    {id:'r11', a:'Count Roderick',       b:'Countess Ellen',    type:'ally',    scope:['personal'],             label:'Devoted marriage; Ellen is his political counsel'},
+    {id:'r12', a:'Sir Hywel',            b:'Sir Jarren',        type:'rival',   scope:['personal'],             label:'Competition for glory and Roderick\'s favour'},
+    {id:'r13', a:'Lady Elaine',          b:'Count Roderick',    type:'complex', scope:['personal'],             label:'Elaine\'s scandalous affairs embarrass the household'},
     // ── Cornwall vs Uther
-    {id:'r14', a:'Gorlois',              b:'King Uther Pendragon',  type:'hostile', scope:['political','personal'], label:'Ancient grudge; Gorlois refuses Uther\'s court'},
-    {id:'r15', a:'Ygraine',              b:'King Uther Pendragon',  type:'complex', scope:['personal'],             label:'Uther has shown unsettling interest in the Duchess of Cornwall'},
+    {id:'r14', a:'Gorlois',              b:'King Uther Pendragon', type:'hostile', scope:['political','personal'], label:'Ancient grudge; Gorlois refuses Uther\'s court'},
+    {id:'r15', a:'Ygraine',               b:'King Uther Pendragon', type:'complex', scope:['personal'],       label:'Uther has shown unsettling interest in the Duchess of Cornwall'},
     // ── Saxon threat
-    {id:'r16', a:'King Aelle',           b:'King Uther Pendragon',  type:'hostile', scope:['political'],            label:'Aelle leads the Saxon Shore against British kings'},
-    {id:'r17', a:'King Aelle',           b:'Count Roderick',        type:'hostile', scope:['political'],            label:'Saxon raids threaten Salisbury\'s eastern borders'},
-    {id:'r18', a:'Sygarius',             b:'King Uther Pendragon',  type:'complex', scope:['political'],            label:'Frankish exile seeks British alliance; in 488 Syagrius knelt before Madoc begging to march on Rouen — refused. His enemy King Claudas has never lost a battle.'},
+    {id:'r16', a:'King Aelle',           b:'King Uther Pendragon', type:'hostile', scope:['political'],         label:'Aelle leads the Saxon Shore against British kings'},
+    {id:'r17', a:'King Aelle',           b:'Count Roderick',    type:'hostile', scope:['political'],            label:'Saxon raids threaten Salisbury\'s eastern borders'},
+    {id:'r18', a:'Sygarius',              b:'King Uther Pendragon', type:'complex', scope:['political'],            label:'Frankish exile seeks British alliance; in 488 Syagrius knelt before Madoc begging to march on Rouen — refused. His enemy King Claudas has never lost a battle.'},
     // ── Estragales
-    {id:'r19', a:'Canan',                b:'Count Roderick',        type:'ally',    scope:['political'],            label:'Estragales and Salisbury maintain cautious friendship'},
-    {id:'r20', a:'Leget',                b:'Canan',                 type:'rival',   scope:['political'],            label:'Hill tribe leader chafes under Estragales authority'},
-    {id:'r21', a:'Lunet',                b:'Gwegon',                type:'love',    scope:['personal'],             label:'Lunet is a love interest of Gwegon (PC)'},
+    {id:'r19', a:'Canan',                 b:'Count Roderick',       type:'ally',    scope:['political'],            label:'Estragales and Salisbury maintain cautious friendship'},
+    {id:'r20', a:'Leget',                 b:'Canan',                type:'rival',   scope:['political'],            label:'Hill tribe leader chafes under Estragales authority'},
+    {id:'r21', a:'Lunet',                 b:'Gwegon',               type:'love',    scope:['personal'],             label:'Lunet is a love interest of Gwegon (PC)'},
     // ── Other nobles
-    {id:'r22', a:'Cadwy',                b:'King Uther Pendragon',  type:'vassal',  scope:['political'],            label:'Cadwy of Summerset owes nominal fealty'},
-    {id:'r23', a:'Melwas',               b:'Cadwy',                 type:'rival',   scope:['political'],            label:'Melwas\' great glory overshadows Cadwy\'s authority'},
-    {id:'r24', a:'Corneus',              b:'King Uther Pendragon',  type:'vassal',  scope:['political'],            label:'Duke of Lindsey, loyal vassal'},
-    {id:'r25', a:'Heraut de Aupres',     b:'King Uther Pendragon',  type:'rival',   scope:['political'],            label:'Malahaut disputes Uther\'s supremacy as a self-styled Roman'},
+    {id:'r22', a:'Cadwy',                 b:'King Uther Pendragon', type:'vassal',  scope:['political'],            label:'Cadwy of Summerset owes nominal fealty'},
+    {id:'r23', a:'Melwas',                b:'Cadwy',                type:'rival',   scope:['political'],            label:'Melwas\' great glory overshadows Cadwy\'s authority'},
+    {id:'r24', a:'Corneus',               b:'King Uther Pendragon', type:'vassal',  scope:['political'],            label:'Duke of Lindsey, loyal vassal'},
+    {id:'r25', a:'Heraut de Aupres',      b:'King Uther Pendragon', type:'rival',   scope:['political'],            label:'Malahaut disputes Uther\'s supremacy as a self-styled Roman'},
     // ── Merlin schemes
-    {id:'r26', a:'Merlin the Magician',  b:'King Uther Pendragon',  type:'scheme',  scope:['plot'],                 label:'Merlin has a long-term plan that uses Uther as a means to an end'},
-    {id:'r27', a:'Merlin the Magician',  b:'Gorlois',               type:'scheme',  scope:['plot'],                 label:'Merlin needs Gorlois out of the way for his plan'},
+    {id:'r26', a:'Merlin the Magician',   b:'King Uther Pendragon', type:'scheme',  scope:['plot'],                 label:'Merlin has a long-term plan that uses Uther as a means to an end'},
+    {id:'r27', a:'Merlin the Magician',   b:'Gorlois',              type:'scheme',  scope:['plot'],                 label:'Merlin needs Gorlois out of the way for his plan'},
     // ── PC connections
-    {id:'r28', a:'Count Roderick',       b:'Agragan',               type:'vassal',  scope:['political','affairs'],  label:'PC Agragan holds lands under Roderick'},
-    {id:'r29', a:'Count Roderick',       b:'Rhydian',               type:'vassal',  scope:['political','affairs'],  label:'PC Rhydian holds lands under Roderick'},
-    {id:'r30', a:'Count Roderick',       b:'Gwegon',                type:'vassal',  scope:['political','affairs'],  label:'PC Gwegon holds lands under Roderick'},
-    {id:'r31', a:'Count Roderick',       b:'Timotheus',             type:'vassal',  scope:['political','affairs'],  label:'PC Timotheus holds lands under Roderick'},
-    {id:'r32', a:'Sir Elad',             b:'Agragan',               type:'ally',    scope:['personal','affairs'],   label:'Elad mentors and respects Agragan'},
+    {id:'r28', a:'Count Roderick',        b:'Agragan',              type:'vassal',  scope:['political','affairs'],  label:'PC Agragan holds lands under Roderick'},
+    {id:'r29', a:'Count Roderick',        b:'Rhydian',              type:'vassal',  scope:['political','affairs'],  label:'PC Rhydian holds lands under Roderick'},
+    {id:'r30', a:'Count Roderick',        b:'Gwegon',               type:'vassal',  scope:['political','affairs'],  label:'PC Gwegon holds lands under Roderick'},
+    {id:'r31', a:'Count Roderick',        b:'Timotheus',            type:'vassal',  scope:['political','affairs'],  label:'PC Timotheus holds lands under Roderick'},
+    {id:'r32', a:'Sir Elad',              b:'Agragan',              type:'ally',    scope:['personal','affairs'],   label:'Elad mentors and respects Agragan'},
     // ── 488 developments
-    {id:'r33', a:'Prince Madoc',         b:'Sygarius',              type:'rival',   scope:['political'],            label:'Madoc refused Syagrius\'s plea to march on Rouen in 488; diplomatic rift forming'},
-    {id:'r34', a:'King Uther Pendragon', b:'Lot',                   type:'rival',   scope:['political'],            label:'Lot avoided battle in the north in 488; Uther is aware and suspicious of his loyalty'},
-    {id:'r35', a:'King Uther Pendragon', b:'King Claudas',          type:'hostile', scope:['political','military'], label:'Britain\'s 488 campaign in Frankland is directed against Claudas\'s forces; a formidable enemy who has never lost a battle'},
-    {id:'r36', a:'Count Roderick',       b:'Mellyr',                type:'vassal',  scope:['political','affairs'],  label:'PC Mellyr holds Newton Tony under Roderick'},
+    {id:'r33', a:'Prince Madoc',          b:'Sygarius',             type:'rival',   scope:['political'],            label:'Madoc refused Syagrius\'s plea to march on Rouen in 488; diplomatic rift forming'},
+    {id:'r34', a:'King Uther Pendragon',  b:'Lot',                  type:'rival',   scope:['political'],            label:'Lot avoided battle in the north in 488; Uther is aware and suspicious of his loyalty'},
+    {id:'r35', a:'King Uther Pendragon',  b:'King Claudas',         type:'hostile', scope:['political','military'], label:'Britain\'s 488 campaign in Frankland is directed against Claudas\'s forces; a formidable enemy who has never lost a battle'},
+    {id:'r36', a:'Count Roderick',        b:'Mellyr',               type:'vassal',  scope:['political','affairs'],  label:'PC Mellyr holds Newton Tony under Roderick'},
   ];
 })();
 
@@ -2680,8 +2680,8 @@ const MANOR_DATA = {
         type: 'Demesne (via Gwiona)',
         bonus: null,
         improvements: [],
-        knight: 'Sir Rhodri',
-        notes: 'Income: yearly harvest roll − 8£. Sir Rhodri: just but cruel; hard decisions on the border.',
+        knight: 'Sir Rodri',
+        notes: 'Income: yearly harvest roll − 8£.',
         history: []
       },
       {
@@ -2689,9 +2689,26 @@ const MANOR_DATA = {
         type: 'Enfeoffed (via Gwiona)',
         bonus: null,
         improvements: [],
-        knight: 'Tarthan',
+        knight: 'Sir Tartan',
         notes: 'Owes military service.',
         history: []
+      }
+    ]
+  },
+
+  Mellyr: {
+    pc: 'Mellyr',
+    manors: [
+      {
+        name: 'Newton Tony',
+        type: 'Demesne',
+        bonus: 'Site of a Famous Battle of Faeries',
+        improvements: [],
+        knight: null,
+        notes: 'Home manor.',
+        history: [
+          {year:489, harvest:9, harvestResult:'Regular', stewardship:0, improvIncome:0, income:9, lifestyle:'Normal', lifestyleCost:8, improvMaint:0, family:0, improvBuild:0, misc:0, final:1, notes:''},
+        ]
       }
     ]
   }
@@ -2983,7 +3000,7 @@ function renderEconomics() {
   // Bar chart SVG for year totals
   function barChart(totals) {
     if (!totals.length) return '';
-    const W=340, H=90, pad=32, barW=Math.min(28, (W-pad*2)/totals.length - 4);
+    const W=280, H=90, pad=24, barW=Math.min(24, (W-pad*2)/totals.length - 4);
     const maxVal = Math.max(...totals.flatMap(t=>[t.income, t.expenses, Math.abs(t.final)])) || 1;
     const scale = (H-20)/maxVal;
     const bars = totals.map((t,i) => {
@@ -2996,7 +3013,7 @@ function renderEconomics() {
         <text x="${x+barW}" y="${H-2}" text-anchor="middle" font-size="8" fill="#aaa">${t.year}</text>
         <text x="${x+barW}" y="${H-10-Math.max(incH,expH)-3}" text-anchor="middle" font-size="7.5" fill="${finColor}">${t.final>=0?'+':''}${t.final}£</text>`;
     }).join('');
-    return `<svg width="${W}" height="${H}" style="display:block;overflow:visible">
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;overflow:visible;max-height:${H}px">
       <text x="4" y="10" font-size="7" fill="#5a9a5a">■ Income</text>
       <text x="60" y="10" font-size="7" fill="#9a5a5a">■ Expenses</text>
       ${bars}
@@ -3104,14 +3121,14 @@ function renderEconomics() {
       ${tabs}
     </div>
 
-    <div style="padding:1.2rem;display:grid;grid-template-columns:1fr 320px;gap:1.2rem;align-items:start">
-      <div>${manorCards}</div>
+    <div style="padding:1.2rem;display:grid;grid-template-columns:1fr 280px;gap:1.2rem;align-items:start;min-width:0">
+      <div style="min-width:0">${manorCards}</div>
 
-      <div style="position:sticky;top:1rem">
-        <div style="background:rgba(0,0,0,.08);border:1px solid var(--parchment-shadow);border-radius:3px;padding:1rem;margin-bottom:1rem">
+      <div style="position:sticky;top:1rem;min-width:0;overflow:hidden">
+        <div style="background:rgba(0,0,0,.08);border:1px solid var(--parchment-shadow);border-radius:3px;padding:1rem;margin-bottom:1rem;overflow:hidden">
           <div style="font-family:'Cinzel',serif;font-size:.65rem;letter-spacing:.14em;color:var(--steel);text-transform:uppercase;margin-bottom:.8rem">Estate Summary</div>
           ${yearTotals.length ? `
-          <div style="margin-bottom:.8rem">${barChart(yearTotals)}</div>
+          <div style="margin-bottom:.8rem;overflow:hidden">${barChart(yearTotals)}</div>
           <table style="width:100%;border-collapse:collapse;font-size:.78rem">
             <thead><tr style="border-bottom:1px solid var(--parchment-shadow)">
               <th style="font-family:'Cinzel',serif;font-size:.58rem;color:var(--steel);text-align:left;padding:.2rem;font-weight:normal">Year</th>
