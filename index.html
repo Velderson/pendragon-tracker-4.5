@@ -2797,55 +2797,55 @@ let estateSubTab = 'map';
 const MANOR_MAP_CONFIG = {
   Mellyr: {
     manorName: 'Newton Tony',
-    river: { enterEdge:'n', enterPct:0.72, exitEdge:'s', exitPct:0.68, width:16, name:'River Bourne', color:'#5888b0' },
+    // Bourne runs N→S on the WEST — Newton Tony sits on the east bank
+    river: { enterEdge:'n', enterPct:0.26, exitEdge:'s', exitPct:0.28, width:16, name:'River Bourne', color:'#5888b0' },
     roads: [
       { type:'poor', from:[0.45,0.48], to:[0.0,0.48],  name:'Track to Amesbury' },
       { type:'poor', from:[0.48,0.52], to:[0.48,1.0],   name:'Track to Sarum' },
     ],
-    hallDir:'sw', tone:'warm',
-    landscape:{ ne:'pasture', e:'woodland', s:'meadow', sw:'waste', w:'fallow' },
+    hallDir:'sw', tone:'warm', wasteDir:'e',
     lotCount:10, villageOffset:[0,0],
   },
   Agragan: {
     manorName: 'Cholderton',
-    river: { enterEdge:'n', enterPct:0.58, exitEdge:'s', exitPct:0.62, width:14, name:'River Bourne', color:'#5888b0' },
+    // Bourne runs N→S on the WEST — Cholderton east bank, upstream of Newton Tony
+    river: { enterEdge:'n', enterPct:0.28, exitEdge:'s', exitPct:0.30, width:14, name:'River Bourne', color:'#5888b0' },
     roads: [
       { type:'poor', from:[0.45,0.50], to:[0.0,0.52], name:'Track to Amesbury' },
     ],
-    hallDir:'sw', tone:'warm',
-    landscape:{ n:'fallow', ne:'pasture', e:'pasture', s:'meadow', sw:'waste', w:'fallow' },
+    hallDir:'sw', tone:'warm', wasteDir:'e',
     lotCount:9, villageOffset:[-20,10],
   },
   Rhydian: {
     manorName: 'Stapleford',
-    river: { enterEdge:'w', enterPct:0.58, exitEdge:'e', exitPct:0.62, width:18, name:'River Wylye', color:'#4878a8' },
+    // Wylye runs W→E just SOUTH of the village — village on north bank
+    river: { enterEdge:'w', enterPct:0.68, exitEdge:'e', exitPct:0.70, width:18, name:'River Wylye', color:'#4878a8' },
     roads: [
-      { type:'good', from:[0.0,0.56], to:[1.0,0.56], name:'Wylye Valley Road' },
+      { type:'good', from:[0.0,0.65], to:[1.0,0.65], name:'Wylye Valley Road' },
       { type:'poor', from:[0.48,0.52], to:[0.48,0.0], name:'Track to Tilshead' },
     ],
-    hallDir:'w', tone:'cool',
-    landscape:{ n:'fallow', ne:'woodland', e:'pasture', s:'meadow', sw:'meadow', w:'waste' },
+    hallDir:'w', tone:'cool', wasteDir:'n',
     lotCount:10, villageOffset:[10,-10],
   },
   Timotheus: {
     manorName: 'Laverstock',
-    river: { enterEdge:'n', enterPct:0.42, exitEdge:'s', exitPct:0.45, width:18, name:'River Avon', color:'#4070a0' },
+    // Avon runs N→S on the WEST — Laverstock on east bank just SE of Sarum
+    river: { enterEdge:'n', enterPct:0.30, exitEdge:'s', exitPct:0.32, width:18, name:'River Avon', color:'#4070a0' },
     roads: [
       { type:'good', from:[0.0,0.50], to:[0.44,0.50], name:'Road to Sarum' },
       { type:'poor', from:[0.44,0.50], to:[0.44,1.0],  name:'Track south' },
     ],
-    hallDir:'n', tone:'neutral',
-    landscape:{ n:'pasture', ne:'pasture', e:'woodland', s:'meadow', sw:'waste', w:'fallow' },
+    hallDir:'n', tone:'neutral', wasteDir:'e',
     lotCount:10, villageOffset:[0,0],
   },
   Gwegon: {
     manorName: 'Broughton',
-    river: { enterEdge:'n', enterPct:0.38, exitEdge:'s', exitPct:0.55, width:12, name:'Broughton Stream', color:'#6090b8' },
+    // Small stream runs N→S east of village — open downland to west
+    river: { enterEdge:'n', enterPct:0.72, exitEdge:'s', exitPct:0.70, width:12, name:'Broughton Stream', color:'#6090b8' },
     roads: [
       { type:'poor', from:[0.0,0.52], to:[0.5,0.52], name:'Track to Sarum' },
     ],
-    hallDir:'sw', tone:'green',
-    landscape:{ n:'woodland', ne:'woodland', e:'pasture', s:'meadow', sw:'waste', w:'fallow' },
+    hallDir:'sw', tone:'green', wasteDir:'w',
     lotCount:9, villageOffset:[15,0],
   },
 };
@@ -3222,106 +3222,135 @@ function renderManorMapSVG(charName) {
      Lot10 outer: vx-220,vy+100 → vx-260,vy+0 → vx-220,vy-80 → vx-160,vy-100
      ═══════════════════════════════════════════════════════ -->
 
-<!-- FALLOW — top band, covers everything above lots 1-4 outer edges -->
-<g id="${svgId}-fallow" class="mz" data-char="${charName}" data-key="fallow" style="cursor:pointer">
-  <polygon points="
-    0,0  ${W},0  ${W},${vy-200}
-    ${vx+280},${vy-200}  ${vx+120},${vy-210}  ${vx+20},${vy-240}
-    ${vx-10},${vy-220}  ${vx-100},${vy-180}  ${vx-180},${vy-230}
-    0,${vy-230}
-  " fill="${t.fallow}" stroke="#8a7010" stroke-width="1"/>
-  <polygon points="
-    0,0  ${W},0  ${W},${vy-200}
-    ${vx+280},${vy-200}  ${vx+120},${vy-210}  ${vx+20},${vy-240}
-    ${vx-10},${vy-220}  ${vx-100},${vy-180}  ${vx-180},${vy-230}
-    0,${vy-230}
-  " fill="url(#mp-fx${charName})"/>
-  <text x="${vx+60}" y="${vy-258}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#3a2808">Fallow</text>
-</g>
+<!-- ═══ OUTER LANDSCAPE ZONES — layout driven by wasteDir ═══ -->
+${(()=>{
+  const wd = cfg.wasteDir || 'w';
 
-<!-- PASTURE NE — right of lots 4,5,6 -->
-<g id="${svgId}-pasture" class="mz" data-char="${charName}" data-key="pasture" style="cursor:pointer">
-  <polygon points="
-    ${vx+280},${vy-200}  ${W},${vy-200}  ${W},${vy+200}
-    ${vx+310},${vy+50}   ${vx+300},${vy-100}
-    ${vx+250},${vy-80}
-  " fill="${t.pasture}" stroke="#4a7828" stroke-width="1"/>
-  <polygon points="
-    ${vx+280},${vy-200}  ${W},${vy-200}  ${W},${vy+200}
-    ${vx+310},${vy+50}   ${vx+300},${vy-100}
-    ${vx+250},${vy-80}
-  " fill="url(#mp-pd${charName})"/>
-  <g fill="#e8e0c0" stroke="#706850" stroke-width="0.5">
-    <ellipse cx="${vx+370}" cy="${vy-120}" rx="9" ry="6"/>
-    <ellipse cx="${vx+410}" cy="${vy-90}" rx="9" ry="6"/>
-    <ellipse cx="${vx+390}" cy="${vy-55}" rx="9" ry="6"/>
-    <ellipse cx="${vx+430}" cy="${vy-20}" rx="9" ry="6"/>
-    <ellipse cx="${vx+360}" cy="${vy+20}" rx="9" ry="6"/>
-    <ellipse cx="${vx+405}" cy="${vy+50}" rx="9" ry="6"/>
-  </g>
-  <text x="${vx+395}" y="${vy-130}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#2a4818">Common</text>
-  <text x="${vx+395}" y="${vy-117}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#2a4818">Pasture</text>
-</g>
+  // Helper: generate sheep symbols at positions
+  const sheep = (pts) => pts.map(([cx,cy])=>`<ellipse cx="${cx}" cy="${cy}" rx="9" ry="6" fill="#e8e0c0" stroke="#706850" stroke-width="0.5"/>`).join('');
 
-<!-- WOODLAND SE — right of lots 6,7 and below pasture -->
-<g id="${svgId}-woodland" class="mz" data-char="${charName}" data-key="woodland" style="cursor:pointer">
-  <polygon points="
-    ${vx+300},${vy-100}  ${W},${vy+200}  ${W},${H}
-    ${vx+220},${H}       ${vx+100},${vy+260}
-    ${vx+220},${vy+200}  ${vx+260},${vy+160}
-    ${vx+310},${vy+50}
-  " fill="${t.woodland}" stroke="#2e5818" stroke-width="1"/>
-  <polygon points="
-    ${vx+300},${vy-100}  ${W},${vy+200}  ${W},${H}
-    ${vx+220},${H}       ${vx+100},${vy+260}
-    ${vx+220},${vy+200}  ${vx+260},${vy+160}
-    ${vx+310},${vy+50}
-  " fill="url(#mp-wd${charName})"/>
-  <g fill="#2a5010" opacity="0.6">
-    <ellipse cx="${vx+360}" cy="${vy+80}" rx="14" ry="17"/>
-    <ellipse cx="${vx+400}" cy="${vy+110}" rx="13" ry="16"/>
-    <ellipse cx="${vx+375}" cy="${vy+148}" rx="14" ry="17"/>
-    <ellipse cx="${vx+415}" cy="${vy+175}" rx="13" ry="16"/>
-    <ellipse cx="${vx+355}" cy="${vy+205}" rx="14" ry="17"/>
-    <ellipse cx="${vx+395}" cy="${vy+238}" rx="13" ry="16"/>
-    <ellipse cx="${vx+360}" cy="${vy+272}" rx="12" ry="15"/>
-  </g>
-  <text x="${vx+390}" y="${vy+185}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#0e2806">Lord's Wood</text>
-</g>
+  // Helper: generate tree canopy ellipses
+  const trees = (pts) => pts.map(([cx,cy,rx,ry])=>`<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#2a5010" opacity="0.62"/>`).join('');
 
-<!-- MEADOW S — entire bottom band below lots 7,8,9 -->
-<g id="${svgId}-meadow" class="mz" data-char="${charName}" data-key="meadow" style="cursor:pointer">
-  <polygon points="
-    0,${H}               ${vx+220},${H}
-    ${vx+100},${vy+260}  ${vx+100},${vy+230}
-    ${vx-30},${vy+230}   ${vx-180},${vy+220}
-    ${vx-220},${vy+100}  0,${H}
-  " fill="${t.meadow}" stroke="#3a6820" stroke-width="1"/>
-  <polygon points="
-    0,${H}               ${vx+220},${H}
-    ${vx+100},${vy+260}  ${vx+100},${vy+230}
-    ${vx-30},${vy+230}   ${vx-180},${vy+220}
-    ${vx-220},${vy+100}  0,${H}
-  " fill="url(#mp-pd${charName})" opacity="0.7"/>
-  <text x="${vx-30}" y="${vy+330}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="12" fill="#1e3a10">The Meadow</text>
-</g>
+  // Helper: pasture zone SVG
+  function pastureZone(poly, sheepPts, labelX, labelY) {
+    return `<g id="${svgId}-pasture" class="mz" data-char="${charName}" data-key="pasture" style="cursor:pointer">
+  <polygon points="${poly}" fill="${t.pasture}" stroke="#4a7828" stroke-width="1"/>
+  <polygon points="${poly}" fill="url(#mp-pd${charName})"/>
+  ${sheep(sheepPts)}
+  <text x="${labelX}" y="${labelY}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#2a4818">Common</text>
+  <text x="${labelX}" y="${labelY+13}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#2a4818">Pasture</text>
+</g>`;
+  }
 
-<!-- WASTE W — left band, one clean polygon covering entire left edge -->
-<g id="${svgId}-waste" class="mz" data-key="waste" data-char="${charName}" style="cursor:pointer">
-  <polygon points="
-    0,0              ${vx-180},0
-    ${vx-100},${vy-180}  ${vx-180},${vy-230}
-    0,${vy-230}
-  " fill="${t.waste}" stroke="#686828" stroke-width="1"/>
-  <polygon points="
-    0,${vy-230}          ${vx-180},${vy-230}
-    ${vx-100},${vy-180}  ${vx-160},${vy-100}
-    ${vx-220},${vy-80}   ${vx-260},${vy}
-    ${vx-220},${vy+100}  ${vx-180},${vy+220}
-    0,${H}
-  " fill="${t.waste}" stroke="#686828" stroke-width="1"/>
-  <text x="${vx-310}" y="${vy+40}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#484818">Waste</text>
-</g>
+  // Helper: woodland zone SVG — bigger, with more trees
+  function woodlandZone(poly, treePts, labelX, labelY, labelRotate) {
+    const rot = labelRotate ? ` transform="rotate(${labelRotate},${labelX},${labelY})"` : '';
+    return `<g id="${svgId}-woodland" class="mz" data-char="${charName}" data-key="woodland" style="cursor:pointer">
+  <polygon points="${poly}" fill="${t.woodland}" stroke="#2e5818" stroke-width="1"/>
+  <polygon points="${poly}" fill="url(#mp-wd${charName})"/>
+  <g fill="#2a5010" opacity="0.62">${trees(treePts)}</g>
+  <text x="${labelX}" y="${labelY}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#0e2806"${rot}>Lord's Wood</text>
+</g>`;
+  }
+
+  // Helper: waste zone with scrub plants
+  function wasteZone(polys, labelX, labelY) {
+    const polyHtml = polys.map(p=>`<polygon points="${p}" fill="${t.waste}" stroke="#686828" stroke-width="1"/>`).join('');
+    // Scrub plants: small irregular plant tufts
+    const scrubPts = [
+      [labelX-60, labelY-40],[labelX-20,labelY-60],[labelX+40,labelY-30],
+      [labelX-80,labelY+20],[labelX+10,labelY+10],[labelX+60,labelY-50],
+      [labelX-40,labelY+40],[labelX+80,labelY+20],[labelX-100,labelY-20],
+    ];
+    const scrub = scrubPts.map(([sx,sy])=>`
+      <line x1="${sx}" y1="${sy}" x2="${sx-4}" y2="${sy-9}" stroke="#6a6030" stroke-width="1" opacity="0.55"/>
+      <line x1="${sx}" y1="${sy}" x2="${sx+5}" y2="${sy-8}" stroke="#6a6030" stroke-width="1" opacity="0.55"/>
+      <line x1="${sx}" y1="${sy}" x2="${sx}" y2="${sy-11}" stroke="#5a5828" stroke-width="1.2" opacity="0.6"/>
+    `).join('');
+    return `<g id="${svgId}-waste" class="mz" data-key="waste" data-char="${charName}" style="cursor:pointer">
+  ${polyHtml}
+  ${scrub}
+  <text x="${labelX}" y="${labelY}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#484818">Waste</text>
+</g>`;
+  }
+
+  // Helper: fallow zone
+  function fallowZone(poly) {
+    return `<g id="${svgId}-fallow" class="mz" data-char="${charName}" data-key="fallow" style="cursor:pointer">
+  <polygon points="${poly}" fill="${t.fallow}" stroke="#8a7010" stroke-width="1"/>
+  <polygon points="${poly}" fill="url(#mp-fx${charName})"/>
+  <text x="${vx+40}" y="${vy-255}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#3a2808">Fallow</text>
+</g>`;
+  }
+
+  // Helper: meadow zone
+  function meadowZone(poly, labelX, labelY) {
+    return `<g id="${svgId}-meadow" class="mz" data-char="${charName}" data-key="meadow" style="cursor:pointer">
+  <polygon points="${poly}" fill="${t.meadow}" stroke="#3a6820" stroke-width="1"/>
+  <polygon points="${poly}" fill="url(#mp-pd${charName})" opacity="0.7"/>
+  <text x="${labelX}" y="${labelY}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="12" fill="#1e3a10">The Meadow</text>
+</g>`;
+  }
+
+  // ── LAYOUT: wasteDir = 'w' (waste left, pasture+woodland right) ──
+  // Newton Tony & Broughton — river on west, waste on west  (wait: Mellyr/Agragan wasteDir='e', Gwegon='w')
+  if (wd === 'w') {
+    const fallowPoly = `0,0 ${W},0 ${W},${vy-200} ${vx+280},${vy-200} ${vx+120},${vy-210} ${vx+20},${vy-240} ${vx-10},${vy-220} ${vx-100},${vy-180} ${vx-180},${vy-230} 0,${vy-230}`;
+    const pasturePoly = `${vx+280},${vy-200} ${W},${vy-200} ${W},${vy+200} ${vx+310},${vy+50} ${vx+300},${vy-100} ${vx+250},${vy-80}`;
+    const woodlandPoly = `${vx+300},${vy-100} ${W},${vy+200} ${W},${H} ${vx+220},${H} ${vx+100},${vy+260} ${vx+220},${vy+200} ${vx+260},${vy+160} ${vx+310},${vy+50}`;
+    const meadowPoly = `0,${H} ${vx+220},${H} ${vx+100},${vy+260} ${vx+100},${vy+230} ${vx-30},${vy+230} ${vx-180},${vy+220} ${vx-220},${vy+100} 0,${H}`;
+    const wastePoly1 = `0,0 ${vx-180},0 ${vx-100},${vy-180} ${vx-180},${vy-230} 0,${vy-230}`;
+    const wastePoly2 = `0,${vy-230} ${vx-180},${vy-230} ${vx-100},${vy-180} ${vx-160},${vy-100} ${vx-220},${vy-80} ${vx-260},${vy} ${vx-220},${vy+100} ${vx-180},${vy+220} 0,${H}`;
+    return fallowZone(fallowPoly)
+      + pastureZone(pasturePoly, [[vx+370,vy-120],[vx+410,vy-90],[vx+390,vy-55],[vx+430,vy-20],[vx+360,vy+20],[vx+405,vy+50]], vx+395, vy-130)
+      + woodlandZone(woodlandPoly, [[vx+360,vy+75,16,20],[vx+405,vy+100,15,19],[vx+375,vy+135,17,21],[vx+420,vy+165,15,19],[vx+350,vy+200,17,21],[vx+400,vy+230,15,19],[vx+365,vy+265,16,20],[vx+410,vy+295,14,18],[vx+345,vy+320,15,19]], vx+390, vy+190, 0)
+      + meadowZone(meadowPoly, vx-30, vy+330)
+      + wasteZone([wastePoly1, wastePoly2], vx-310, vy+40);
+  }
+
+  // ── LAYOUT: wasteDir = 'e' (waste right, pasture+woodland left) ──
+  // Newton Tony, Cholderton, Laverstock — river west, waste east (far dry upland)
+  if (wd === 'e') {
+    const fallowPoly = `0,0 ${W},0 ${W},${vy-200} ${vx+280},${vy-200} ${vx+120},${vy-210} ${vx+20},${vy-240} ${vx-10},${vy-220} ${vx-100},${vy-180} ${vx-180},${vy-230} 0,${vy-230}`;
+    // Pasture moves to NW (left side, between lot1 outer and map edge)
+    const pasturePoly = `${vx-180},0 ${vx-100},${vy-180} ${vx-160},${vy-100} ${vx-220},${vy-80} ${vx-260},${vy} ${vx-220},${vy+100} ${vx-280},${vy+80} ${vx-320},0`;
+    // Woodland moves to SW
+    const woodlandPoly = `${vx-220},${vy+100} ${vx-260},${vy} ${vx-320},0 ${vx-320},${H} 0,${H} ${vx-220},${H} ${vx-180},${vy+220}`;
+    const meadowPoly = `${vx-180},${vy+220} ${vx-30},${vy+230} ${vx+100},${vy+260} ${vx+220},${H} ${vx-220},${H}`;
+    // Waste takes the full east band
+    const wastePoly1 = `${W},0 ${vx+280},${vy-200} ${W},${vy-200}`;
+    const wastePoly2 = `${W},${vy-200} ${vx+280},${vy-200} ${vx+250},${vy-80} ${vx+300},${vy-100} ${vx+310},${vy+50} ${vx+260},${vy+160} ${vx+220},${vy+200} ${vx+100},${vy+260} ${vx+220},${H} ${W},${H}`;
+    return fallowZone(fallowPoly)
+      + pastureZone(pasturePoly, [[vx-240,vy-120],[vx-280,vy-80],[vx-260,vy-40],[vx-300,vy+20],[vx-230,vy+50]], vx-265, vy-100)
+      + woodlandZone(woodlandPoly, [[vx-250,vy+60,16,20],[vx-290,vy+95,15,19],[vx-260,vy+130,17,21],[vx-300,vy+165,15,19],[vx-240,vy+200,17,21],[vx-280,vy+240,15,19],[vx-250,vy+280,14,18]], vx-270, vy+180, 0)
+      + meadowZone(meadowPoly, vx, vy+330)
+      + wasteZone([wastePoly1, wastePoly2], vx+360, vy+100);
+  }
+
+  // ── LAYOUT: wasteDir = 'n' (waste top/north, river south) ──
+  // Stapleford — Wylye south, waste is north upland (chalk downs)
+  if (wd === 'n') {
+    // Waste fills the top band (was fallow)
+    const wastePoly = `0,0 ${W},0 ${W},${vy-200} ${vx+280},${vy-200} ${vx+120},${vy-210} ${vx+20},${vy-240} ${vx-10},${vy-220} ${vx-100},${vy-180} ${vx-180},${vy-230} 0,${vy-230}`;
+    // Fallow moves to NW strip
+    const fallowPoly = `0,0 ${vx-180},0 ${vx-100},${vy-180} ${vx-180},${vy-230} 0,${vy-230}`;
+    const pasturePoly = `${vx+280},${vy-200} ${W},${vy-200} ${W},${vy+200} ${vx+310},${vy+50} ${vx+300},${vy-100} ${vx+250},${vy-80}`;
+    const woodlandPoly = `${vx+300},${vy-100} ${W},${vy+200} ${W},${H} ${vx+220},${H} ${vx+100},${vy+260} ${vx+220},${vy+200} ${vx+260},${vy+160} ${vx+310},${vy+50}`;
+    const meadowPoly = `0,${H} ${vx+220},${H} ${vx+100},${vy+260} ${vx+100},${vy+230} ${vx-30},${vy+230} ${vx-180},${vy+220} ${vx-220},${vy+100} 0,${H}`;
+    return wasteZone([wastePoly], vx, vy-255)
+      + `<g id="${svgId}-fallow" class="mz" data-char="${charName}" data-key="fallow" style="cursor:pointer">
+  <polygon points="${fallowPoly}" fill="${t.fallow}" stroke="#8a7010" stroke-width="1"/>
+  <polygon points="${fallowPoly}" fill="url(#mp-fx${charName})"/>
+  <text x="${vx-130}" y="${vy-130}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#3a2808">Fallow</text>
+</g>`
+      + pastureZone(pasturePoly, [[vx+370,vy-120],[vx+410,vy-90],[vx+390,vy-55],[vx+430,vy-20],[vx+360,vy+20],[vx+405,vy+50]], vx+395, vy-130)
+      + woodlandZone(woodlandPoly, [[vx+360,vy+75,16,20],[vx+405,vy+100,15,19],[vx+375,vy+135,17,21],[vx+420,vy+165,15,19],[vx+350,vy+200,17,21],[vx+400,vy+230,15,19],[vx+365,vy+265,16,20],[vx+410,vy+295,14,18],[vx+345,vy+320,15,19]], vx+390, vy+190, 0)
+      + meadowZone(meadowPoly, vx-30, vy+330);
+  }
+
+  return '<!-- unknown wasteDir -->';
+})()}
 
 <!-- ── ROADS ── -->
 ${roadSvg(cfg.roads)}
