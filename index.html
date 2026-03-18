@@ -2893,18 +2893,18 @@ function renderManorMapSVG(charName) {
     const dx = mx - vx, dy = my - vy;
     const dist = Math.sqrt(dx*dx + dy*dy) || 1;
     const minClear = 220;
-    if (dist < minClear) {
-      // Nudge perpendicular to the river direction
-      const rdx = x2-x1, rdy = y2-y1;
-      const rlen = Math.sqrt(rdx*rdx + rdy*rdy) || 1;
-      // Perpendicular unit vector
-      const px = -rdy/rlen, py = rdx/rlen;
-      // Push control point to the side that keeps it away from village
-      const side = (dx*px + dy*py) >= 0 ? 1 : -1;
-      mx = mx + px * side * (minClear - dist + 100);
-      my = my + py * side * (minClear - dist + 100);
-    }
-    return { path:`M${x1},${y1} Q${mx},${my} ${x2},${y2}`, x1,y1,x2,y2,mx,my };
+    const rdx = x2-x1, rdy = y2-y1;
+    const rlen = Math.sqrt(rdx*rdx + rdy*rdy) || 1;
+    const px = -rdy/rlen, py = rdx/rlen;
+    const side = dist < minClear ? ((dx*px + dy*py) >= 0 ? 1 : -1) : 1;
+    const push = dist < minClear ? (minClear - dist + 100) : 40;
+    // Cubic Bézier: two control points offset in opposite perpendicular directions
+    // giving a natural S-curve meander
+    const cp1x = x1 + rdx*0.3 + px * side * push;
+    const cp1y = y1 + rdy*0.3 + py * side * push;
+    const cp2x = x1 + rdx*0.7 - px * side * push * 0.6;
+    const cp2y = y1 + rdy*0.7 - py * side * push * 0.6;
+    return { path:`M${x1},${y1} C${cp1x},${cp1y} ${cp2x},${cp2y} ${x2},${y2}`, x1,y1,x2,y2,mx:cp1x,my:cp1y };
   }
   const rp = riverPath(cfg.river);
 
@@ -3121,7 +3121,7 @@ function renderManorMapSVG(charName) {
   <line x1="${vx-180}" y1="0" x2="${vx-82}" y2="${vy-35}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
   <line x1="${vx-140}" y1="0" x2="${vx-76}" y2="${vy-46}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
   <line x1="${vx-100}" y1="0" x2="${vx-72}" y2="${vy-58}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
-  <text x="${vx-145}" y="${vy-115}" text-anchor="middle" font-family="'Cinzel',serif" font-size="14" font-weight="600" fill="#3a2008" opacity="0.65">1</text>
+  <text x="${vx-145}" y="${vy-115}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="13" fill="#3a2008" opacity="0.6">i</text>
 </g>
 
 <!-- LOT 2 N -->
@@ -3130,7 +3130,7 @@ function renderManorMapSVG(charName) {
   <polygon points="${vx-65+vOff},${vy-72} ${vx-28},${vy-95} ${vx+18},${vy-95} ${vx-10},${vy-220} ${vx-180},${vy-230} ${vx-100},${vy-180} ${vx-160},${vy-100}" fill="url(#mp-h1${charName})"/>
   <line x1="${vx-90}" y1="${vy-225}" x2="${vx-68}" y2="${vy-72}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
   <line x1="${vx-50}" y1="${vy-222}" x2="${vx-30}" y2="${vy-96}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
-  <text x="${vx-60}" y="${vy-165}" text-anchor="middle" font-family="'Cinzel',serif" font-size="14" font-weight="600" fill="#3a2008" opacity="0.65">2</text>
+  <text x="${vx-60}" y="${vy-165}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="13" fill="#3a2008" opacity="0.6">ii</text>
 </g>
 
 <!-- LOT 3 NNE -->
@@ -3139,7 +3139,7 @@ function renderManorMapSVG(charName) {
   <polygon points="${vx-28},${vy-95} ${vx+18},${vy-95} ${vx+56},${vy-82} ${vx+120},${vy-210} ${vx+20},${vy-240} ${vx-10},${vy-220}" fill="url(#mp-h2${charName})"/>
   <line x1="${vx}" y1="${vy-240}" x2="${vx+18}" y2="${vy-95}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
   <line x1="${vx+40}" y1="${vy-238}" x2="${vx+55}" y2="${vy-83}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
-  <text x="${vx+55}" y="${vy-170}" text-anchor="middle" font-family="'Cinzel',serif" font-size="14" font-weight="600" fill="#3a2008" opacity="0.65">3</text>
+  <text x="${vx+55}" y="${vy-170}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="13" fill="#3a2008" opacity="0.6">iii</text>
 </g>
 
 <!-- LOT 4 NE -->
@@ -3148,7 +3148,7 @@ function renderManorMapSVG(charName) {
   <polygon points="${vx+56},${vy-82} ${vx+74},${vy-50} ${vx+250},${vy-80} ${vx+280},${vy-200} ${vx+120},${vy-210}" fill="url(#mp-h3${charName})"/>
   <line x1="${vx+130}" y1="${vy-212}" x2="${vx+75}" y2="${vy-50}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
   <line x1="${vx+200}" y1="${vy-200}" x2="${vx+165}" y2="${vy-65}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
-  <text x="${vx+175}" y="${vy-145}" text-anchor="middle" font-family="'Cinzel',serif" font-size="14" font-weight="600" fill="#3a2008" opacity="0.65">4</text>
+  <text x="${vx+175}" y="${vy-145}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="13" fill="#3a2008" opacity="0.6">iv</text>
 </g>
 
 <!-- LOT 5 E -->
@@ -3157,7 +3157,7 @@ function renderManorMapSVG(charName) {
   <polygon points="${vx+74},${vy-50} ${vx+78},${vy-16} ${vx+280},${vy+20} ${vx+300},${vy-100} ${vx+250},${vy-80}" fill="url(#mp-h4${charName})"/>
   <line x1="${vx+252}" y1="${vy-82}" x2="${vx+75}" y2="${vy-50}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
   <line x1="${vx+282}" y1="${vy-40}" x2="${vx+77}" y2="${vy-30}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
-  <text x="${vx+200}" y="${vy-30}" text-anchor="middle" font-family="'Cinzel',serif" font-size="14" font-weight="600" fill="#3a2008" opacity="0.65">5</text>
+  <text x="${vx+200}" y="${vy-30}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="13" fill="#3a2008" opacity="0.6">v</text>
 </g>
 
 <!-- LOT 6 SE -->
@@ -3166,7 +3166,7 @@ function renderManorMapSVG(charName) {
   <polygon points="${vx+78},${vy-16} ${vx+68},${vy+18} ${vx+260},${vy+160} ${vx+310},${vy+50} ${vx+280},${vy+20}" fill="url(#mp-h5${charName})"/>
   <line x1="${vx+282}" y1="${vy+22}" x2="${vx+78}" y2="${vy-14}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
   <line x1="${vx+300}" y1="${vy+90}" x2="${vx+70}" y2="${vy+10}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
-  <text x="${vx+210}" y="${vy+100}" text-anchor="middle" font-family="'Cinzel',serif" font-size="14" font-weight="600" fill="#3a2008" opacity="0.65">6</text>
+  <text x="${vx+210}" y="${vy+100}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="13" fill="#3a2008" opacity="0.6">vi</text>
 </g>
 
 <!-- LOT 7 SSE -->
@@ -3175,7 +3175,7 @@ function renderManorMapSVG(charName) {
   <polygon points="${vx+68},${vy+18} ${vx+48},${vy+44} ${vx+18},${vy+60} ${vx+100},${vy+230} ${vx+220},${vy+200} ${vx+260},${vy+160}" fill="url(#mp-h6${charName})"/>
   <line x1="${vx+262}" y1="${vy+162}" x2="${vx+68}" y2="${vy+20}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
   <line x1="${vx+180}" y1="${vy+210}" x2="${vx+50}" y2="${vy+45}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
-  <text x="${vx+168}" y="${vy+145}" text-anchor="middle" font-family="'Cinzel',serif" font-size="14" font-weight="600" fill="#3a2008" opacity="0.65">7</text>
+  <text x="${vx+168}" y="${vy+145}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="13" fill="#3a2008" opacity="0.6">vii</text>
 </g>
 
 <!-- LOT 8 S -->
@@ -3184,7 +3184,7 @@ function renderManorMapSVG(charName) {
   <polygon points="${vx+18},${vy+60} ${vx-18},${vy+62} ${vx-48},${vy+52} ${vx-30},${vy+230} ${vx+100},${vy+260} ${vx+100},${vy+230}" fill="url(#mp-h7${charName})"/>
   <line x1="${vx-30}" y1="${vy+232}" x2="${vx+18}" y2="${vy+62}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
   <line x1="${vx+40}" y1="${vy+248}" x2="${vx-16}" y2="${vy+64}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
-  <text x="${vx+30}" y="${vy+175}" text-anchor="middle" font-family="'Cinzel',serif" font-size="14" font-weight="600" fill="#3a2008" opacity="0.65">8</text>
+  <text x="${vx+30}" y="${vy+175}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="13" fill="#3a2008" opacity="0.6">viii</text>
 </g>
 
 <!-- LOT 9 SW -->
@@ -3193,7 +3193,7 @@ function renderManorMapSVG(charName) {
   <polygon points="${vx-48},${vy+52} ${vx-72},${vy+32} ${vx-86},${vy+2} ${vx-220},${vy+100} ${vx-180},${vy+220} ${vx-30},${vy+230}" fill="url(#mp-h8${charName})"/>
   <line x1="${vx-222}" y1="${vy+102}" x2="${vx-72}" y2="${vy+32}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
   <line x1="${vx-190}" y1="${vy+180}" x2="${vx-58}" y2="${vy+50}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
-  <text x="${vx-165}" y="${vy+145}" text-anchor="middle" font-family="'Cinzel',serif" font-size="14" font-weight="600" fill="#3a2008" opacity="0.65">9</text>
+  <text x="${vx-165}" y="${vy+145}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="13" fill="#3a2008" opacity="0.6">ix</text>
 </g>
 
 <!-- LOT 10 W -->
@@ -3202,7 +3202,7 @@ function renderManorMapSVG(charName) {
   <polygon points="${vx-86},${vy+2} ${vx-84},${vy-32} ${vx-72},${vy-56} ${vx-65+vOff},${vy-72} ${vx-160},${vy-100} ${vx-220},${vy-80} ${vx-260},${vy+0} ${vx-220},${vy+100}" fill="url(#mp-h9${charName})"/>
   <line x1="${vx-262}" y1="${vy-2}" x2="${vx-83}" y2="${vy-30}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
   <line x1="${vx-225}" y1="${vy-82}" x2="${vx-73}" y2="${vy-54}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
-  <text x="${vx-185}" y="${vy-30}" text-anchor="middle" font-family="'Cinzel',serif" font-size="14" font-weight="600" fill="#3a2008" opacity="0.65">10</text>
+  <text x="${vx-185}" y="${vy-30}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="13" fill="#3a2008" opacity="0.6">x</text>
 </g>
 
 <!-- ═══════════════════════════════════════════════════════
@@ -3238,8 +3238,8 @@ ${(()=>{
   <polygon points="${poly}" fill="${t.pasture}" stroke="#4a7828" stroke-width="1"/>
   <polygon points="${poly}" fill="url(#mp-pd${charName})"/>
   ${sheep(sheepPts)}
-  <text x="${labelX}" y="${labelY}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#2a4818">Common</text>
-  <text x="${labelX}" y="${labelY+13}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#2a4818">Pasture</text>
+  <text x="${labelX}" y="${labelY}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="12" fill="#1a3810">Common</text>
+  <text x="${labelX}" y="${labelY+13}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="12" fill="#1a3810">Pasture</text>
 </g>`;
   }
 
@@ -3250,7 +3250,7 @@ ${(()=>{
   <polygon points="${poly}" fill="${t.woodland}" stroke="#2e5818" stroke-width="1"/>
   <polygon points="${poly}" fill="url(#mp-wd${charName})"/>
   <g fill="#2a5010" opacity="0.62">${trees(treePts)}</g>
-  <text x="${labelX}" y="${labelY}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#0e2806"${rot}>Lord's Wood</text>
+  <text x="${labelX}" y="${labelY}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="12" fill="#0a2204"${rot}>Lord's Wood</text>
 </g>`;
   }
 
@@ -3271,7 +3271,7 @@ ${(()=>{
     return `<g id="${svgId}-waste" class="mz" data-key="waste" data-char="${charName}" style="cursor:pointer">
   ${polyHtml}
   ${scrub}
-  <text x="${labelX}" y="${labelY}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#484818">Waste</text>
+  <text x="${labelX}" y="${labelY}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="12" fill="#383818">Waste</text>
 </g>`;
   }
 
@@ -3280,7 +3280,7 @@ ${(()=>{
     return `<g id="${svgId}-fallow" class="mz" data-char="${charName}" data-key="fallow" style="cursor:pointer">
   <polygon points="${poly}" fill="${t.fallow}" stroke="#8a7010" stroke-width="1"/>
   <polygon points="${poly}" fill="url(#mp-fx${charName})"/>
-  <text x="${vx+40}" y="${vy-255}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#3a2808">Fallow</text>
+  <text x="${vx+40}" y="${vy-255}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="12" fill="#2a1e06">Fallow</text>
 </g>`;
   }
 
@@ -3289,7 +3289,7 @@ ${(()=>{
     return `<g id="${svgId}-meadow" class="mz" data-char="${charName}" data-key="meadow" style="cursor:pointer">
   <polygon points="${poly}" fill="${t.meadow}" stroke="#3a6820" stroke-width="1"/>
   <polygon points="${poly}" fill="url(#mp-pd${charName})" opacity="0.7"/>
-  <text x="${labelX}" y="${labelY}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="12" fill="#1e3a10">The Meadow</text>
+  <text x="${labelX}" y="${labelY}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="13" fill="#143010">The Meadow</text>
 </g>`;
   }
 
@@ -3313,18 +3313,20 @@ ${(()=>{
   // Newton Tony, Cholderton, Laverstock — river west, waste east (far dry upland)
   if (wd === 'e') {
     const fallowPoly = `0,0 ${W},0 ${W},${vy-200} ${vx+280},${vy-200} ${vx+120},${vy-210} ${vx+20},${vy-240} ${vx-10},${vy-220} ${vx-100},${vy-180} ${vx-180},${vy-230} 0,${vy-230}`;
-    // Pasture moves to NW (left side, between lot1 outer and map edge)
-    const pasturePoly = `${vx-180},0 ${vx-100},${vy-180} ${vx-160},${vy-100} ${vx-220},${vy-80} ${vx-260},${vy} ${vx-220},${vy+100} ${vx-280},${vy+80} ${vx-320},0`;
-    // Woodland moves to SW
-    const woodlandPoly = `${vx-220},${vy+100} ${vx-260},${vy} ${vx-320},0 ${vx-320},${H} 0,${H} ${vx-220},${H} ${vx-180},${vy+220}`;
-    const meadowPoly = `${vx-180},${vy+220} ${vx-30},${vy+230} ${vx+100},${vy+260} ${vx+220},${H} ${vx-220},${H}`;
+    // Pasture covers full NW band — reaches 0,0 at top-left
+    const pasturePoly = `0,0 ${vx-180},0 ${vx-100},${vy-180} ${vx-160},${vy-100} ${vx-220},${vy-80} ${vx-260},${vy} ${vx-220},${vy+100} ${vx-280},${vy+80} 0,${vy+60}`;
+    // Woodland covers SW band — reaches 0,H
+    const woodlandPoly = `0,${vy+60} ${vx-280},${vy+80} ${vx-220},${vy+100} ${vx-180},${vy+220} ${vx-30},${vy+230} ${vx+100},${vy+260} ${vx+220},${H} 0,${H}`;
+    const meadowPoly = `${vx-30},${vy+230} ${vx+100},${vy+260} ${vx+100},${vy+230} ${vx+220},${vy+200} ${vx+260},${vy+160} ${vx+220},${H} ${vx+100},${vy+260}`;
     // Waste takes the full east band
     const wastePoly1 = `${W},0 ${vx+280},${vy-200} ${W},${vy-200}`;
     const wastePoly2 = `${W},${vy-200} ${vx+280},${vy-200} ${vx+250},${vy-80} ${vx+300},${vy-100} ${vx+310},${vy+50} ${vx+260},${vy+160} ${vx+220},${vy+200} ${vx+100},${vy+260} ${vx+220},${H} ${W},${H}`;
+    // Meadow fills bottom centre
+    const meadowPolyFull = `${vx-180},${vy+220} ${vx-30},${vy+230} ${vx+100},${vy+260} ${vx+220},${H} 0,${H} 0,${vy+60} ${vx-280},${vy+80} ${vx-220},${vy+100}`;
     return fallowZone(fallowPoly)
-      + pastureZone(pasturePoly, [[vx-240,vy-120],[vx-280,vy-80],[vx-260,vy-40],[vx-300,vy+20],[vx-230,vy+50]], vx-265, vy-100)
-      + woodlandZone(woodlandPoly, [[vx-250,vy+60,16,20],[vx-290,vy+95,15,19],[vx-260,vy+130,17,21],[vx-300,vy+165,15,19],[vx-240,vy+200,17,21],[vx-280,vy+240,15,19],[vx-250,vy+280,14,18]], vx-270, vy+180, 0)
-      + meadowZone(meadowPoly, vx, vy+330)
+      + pastureZone(pasturePoly, [[vx-200,vy-100],[vx-240,vy-60],[vx-270,vy-20],[vx-250,vy+20],[vx-220,vy-140]], vx-230, vy-80)
+      + woodlandZone(woodlandPoly, [[vx-240,vy+80,16,20],[vx-200,vy+115,15,19],[vx-260,vy+140,17,21],[vx-220,vy+175,15,19],[vx-250,vy+210,17,21],[vx-200,vy+250,15,19],[vx-240,vy+290,14,18]], vx-230, vy+200, 0)
+      + meadowZone(meadowPolyFull, vx+60, vy+340)
       + wasteZone([wastePoly1, wastePoly2], vx+360, vy+100);
   }
 
@@ -3342,7 +3344,7 @@ ${(()=>{
       + `<g id="${svgId}-fallow" class="mz" data-char="${charName}" data-key="fallow" style="cursor:pointer">
   <polygon points="${fallowPoly}" fill="${t.fallow}" stroke="#8a7010" stroke-width="1"/>
   <polygon points="${fallowPoly}" fill="url(#mp-fx${charName})"/>
-  <text x="${vx-130}" y="${vy-130}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#3a2808">Fallow</text>
+  <text x="${vx-130}" y="${vy-130}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="12" fill="#2a1e06">Fallow</text>
 </g>`
       + pastureZone(pasturePoly, [[vx+370,vy-120],[vx+410,vy-90],[vx+390,vy-55],[vx+430,vy-20],[vx+360,vy+20],[vx+405,vy+50]], vx+395, vy-130)
       + woodlandZone(woodlandPoly, [[vx+360,vy+75,16,20],[vx+405,vy+100,15,19],[vx+375,vy+135,17,21],[vx+420,vy+165,15,19],[vx+350,vy+200,17,21],[vx+400,vy+230,15,19],[vx+365,vy+265,16,20],[vx+410,vy+295,14,18],[vx+345,vy+320,15,19]], vx+390, vy+190, 0)
@@ -3397,81 +3399,82 @@ ${roadSvg(cfg.roads)}
   <path d="M${vx+10},${vy-38} Q${vx+34},${vy-42} ${vx+58},${vy-30}" fill="none" stroke="#a08840" stroke-width="1.8" opacity="0.25" stroke-linecap="round"/>
   <path d="M${vx-38},${vy+42} Q${vx-18},${vy+36} ${vx-8},${vy+28}" fill="none" stroke="#a08840" stroke-width="1.5" opacity="0.22" stroke-linecap="round"/>
 
-  <!-- ── BUILDINGS — all upright, varied shapes ── -->
+  <!-- ── BUILDINGS — all upright, varied shapes and colours ── -->
+  <!-- Colours: dark timber #5a2e08, mid daub #c4a060, pale daub #d8b87a,
+       weathered #8a6840, standard #7a4818, dark #4a2408 -->
 
-  <!-- CHURCH — inside village, N side near green -->
-  <rect x="${vx-14}" y="${vy-84}" width="28" height="22" fill="#b89c6a" stroke="#6a4e28" stroke-width="1"/>
-  <rect x="${vx-4}" y="${vy-100}" width="8" height="18" fill="#9a8050" stroke="#5a3e1e" stroke-width="0.8"/>
-  <polygon points="${vx},${vy-112} ${vx-5},${vy-100} ${vx+5},${vy-100}" fill="#6a4828"/>
+  <!-- CHURCH — pale stone, distinct from timber buildings -->
+  <rect x="${vx-14}" y="${vy-84}" width="28" height="22" fill="#b8a472" stroke="#6a4e28" stroke-width="1"/>
+  <rect x="${vx-4}" y="${vy-100}" width="8" height="18" fill="#9a8858" stroke="#5a3e1e" stroke-width="0.8"/>
+  <polygon points="${vx},${vy-112} ${vx-5},${vy-100} ${vx+5},${vy-100}" fill="#6a5030"/>
   <line x1="${vx}" y1="${vy-113}" x2="${vx}" y2="${vy-103}" stroke="#e8d8a0" stroke-width="0.8"/>
   <line x1="${vx-4}" y1="${vy-108}" x2="${vx+4}" y2="${vy-108}" stroke="#e8d8a0" stroke-width="0.8"/>
   <rect x="${vx-5}" y="${vy-76}" width="6" height="8" fill="#2a1808"/>
   <text x="${vx}" y="${vy-116}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="8.5" fill="#2a1206">Church</text>
 
-  <!-- Longhouse NW — wide rectangle, two chimney stubs -->
-  <rect x="${vx-66}" y="${vy-68}" width="38" height="15" fill="#7a4818" stroke="#3a1e06" stroke-width="0.8"/>
-  <polygon points="${vx-66},${vy-68} ${vx-28},${vy-68} ${vx-47},${vy-80}" fill="#5a3210"/>
-  <rect x="${vx-58}" y="${vy-82}" width="4" height="6" fill="#4a2808"/>
-  <rect x="${vx-40}" y="${vy-82}" width="4" height="6" fill="#4a2808"/>
+  <!-- Longhouse NW — dark timber frame -->
+  <rect x="${vx-66}" y="${vy-68}" width="38" height="15" fill="#5a2e08" stroke="#2a1204" stroke-width="0.8"/>
+  <polygon points="${vx-66},${vy-68} ${vx-28},${vy-68} ${vx-47},${vy-80}" fill="#3e1e06"/>
+  <rect x="${vx-58}" y="${vy-82}" width="4" height="6" fill="#2e1404"/>
+  <rect x="${vx-40}" y="${vy-82}" width="4" height="6" fill="#2e1404"/>
 
-  <!-- Square hut NW inner -->
-  <rect x="${vx-56}" y="${vy-50}" width="14" height="14" fill="#6a3e10" stroke="#3a1e06" stroke-width="0.7"/>
-  <polygon points="${vx-56},${vy-50} ${vx-42},${vy-50} ${vx-49},${vy-60}" fill="#4a2808"/>
+  <!-- Square hut NW inner — pale lime-washed daub -->
+  <rect x="${vx-56}" y="${vy-50}" width="14" height="14" fill="#d8b87a" stroke="#8a6030" stroke-width="0.7"/>
+  <polygon points="${vx-56},${vy-50} ${vx-42},${vy-50} ${vx-49},${vy-60}" fill="#b09050"/>
 
-  <!-- Narrow tall hut N -->
-  <rect x="${vx-24}" y="${vy-60}" width="12" height="20" fill="#7a4420" stroke="#3a1e06" stroke-width="0.7"/>
-  <polygon points="${vx-24},${vy-60} ${vx-12},${vy-60} ${vx-18},${vy-72}" fill="#5a3010"/>
+  <!-- Narrow tall hut N — weathered grey-brown -->
+  <rect x="${vx-24}" y="${vy-60}" width="12" height="20" fill="#8a6840" stroke="#5a3e20" stroke-width="0.7"/>
+  <polygon points="${vx-24},${vy-60} ${vx-12},${vy-60} ${vx-18},${vy-72}" fill="#6a4e28"/>
 
-  <!-- L-shaped farmhouse NE — two rects forming an L -->
-  <rect x="${vx+18}" y="${vy-70}" width="24" height="14" fill="#784020" stroke="#3a1e06" stroke-width="0.7"/>
-  <rect x="${vx+30}" y="${vy-56}" width="12" height="12" fill="#6a3818" stroke="#3a1e06" stroke-width="0.7"/>
-  <polygon points="${vx+18},${vy-70} ${vx+42},${vy-70} ${vx+30},${vy-82}" fill="#503010"/>
+  <!-- L-shaped farmhouse NE — mid daub with darker wing -->
+  <rect x="${vx+18}" y="${vy-70}" width="24" height="14" fill="#c4a060" stroke="#7a5828" stroke-width="0.7"/>
+  <rect x="${vx+30}" y="${vy-56}" width="12" height="12" fill="#a08040" stroke="#6a4818" stroke-width="0.7"/>
+  <polygon points="${vx+18},${vy-70} ${vx+42},${vy-70} ${vx+30},${vy-82}" fill="#8a6030"/>
 
-  <!-- Wide byre NE -->
-  <rect x="${vx+44}" y="${vy-52}" width="26" height="11" fill="#6a4018" stroke="#3a1e06" stroke-width="0.7"/>
-  <polygon points="${vx+44},${vy-52} ${vx+70},${vy-52} ${vx+57},${vy-62}" fill="#4a2a08"/>
+  <!-- Wide byre NE — dark timber -->
+  <rect x="${vx+44}" y="${vy-52}" width="26" height="11" fill="#5a2e08" stroke="#2a1204" stroke-width="0.7"/>
+  <polygon points="${vx+44},${vy-52} ${vx+70},${vy-52} ${vx+57},${vy-62}" fill="#3e1e06"/>
 
-  <!-- Small round-ended hut W — rect with semicircle end -->
-  <rect x="${vx-76}" y="${vy-24}" width="20" height="13" fill="#6a3a10" stroke="#3a1e06" stroke-width="0.7"/>
-  <ellipse cx="${vx-56}" cy="${vy-18}" rx="0" ry="6.5" fill="#6a3a10"/>
-  <polygon points="${vx-76},${vy-24} ${vx-56},${vy-24} ${vx-66},${vy-35}" fill="#4a2808"/>
+  <!-- Small round-ended hut W — pale daub -->
+  <rect x="${vx-76}" y="${vy-24}" width="20" height="13" fill="#d8b87a" stroke="#8a6030" stroke-width="0.7"/>
+  <polygon points="${vx-76},${vy-24} ${vx-56},${vy-24} ${vx-66},${vy-35}" fill="#b09050"/>
 
-  <!-- Wide longhouse W mid -->
-  <rect x="${vx-80}" y="${vy+2}" width="40" height="14" fill="#7a4418" stroke="#3a1e06" stroke-width="0.8"/>
-  <polygon points="${vx-80},${vy+2} ${vx-40},${vy+2} ${vx-60},${vy-10}" fill="#5a3010"/>
+  <!-- Wide longhouse W mid — standard mid brown -->
+  <rect x="${vx-80}" y="${vy+2}" width="40" height="14" fill="#7a4818" stroke="#3a1e06" stroke-width="0.8"/>
+  <polygon points="${vx-80},${vy+2} ${vx-40},${vy+2} ${vx-60},${vy-10}" fill="#5a3210"/>
   <rect x="${vx-72}" y="${vy-12}" width="4" height="7" fill="#3a2008"/>
 
-  <!-- Small square hut E mid -->
-  <rect x="${vx+56}" y="${vy-18}" width="16" height="16" fill="#704018" stroke="#3a1e06" stroke-width="0.7"/>
-  <polygon points="${vx+56},${vy-18} ${vx+72},${vy-18} ${vx+64},${vy-28}" fill="#4e2a08"/>
+  <!-- Small square hut E mid — weathered -->
+  <rect x="${vx+56}" y="${vy-18}" width="16" height="16" fill="#8a6840" stroke="#5a3e20" stroke-width="0.7"/>
+  <polygon points="${vx+56},${vy-18} ${vx+72},${vy-18} ${vx+64},${vy-28}" fill="#6a4e28"/>
 
-  <!-- Medium hut E lower — with small lean-to -->
-  <rect x="${vx+56}" y="${vy+4}" width="18" height="13" fill="#6a3c10" stroke="#3a1e06" stroke-width="0.7"/>
-  <rect x="${vx+74}" y="${vy+8}" width="10" height="9" fill="#5a3010" stroke="#3a1e06" stroke-width="0.5"/>
-  <polygon points="${vx+56},${vy+4} ${vx+74},${vy+4} ${vx+65},${vy-6}" fill="#4a2808"/>
+  <!-- Medium hut E lower — mid daub with lean-to -->
+  <rect x="${vx+56}" y="${vy+4}" width="18" height="13" fill="#c4a060" stroke="#7a5828" stroke-width="0.7"/>
+  <rect x="${vx+74}" y="${vy+8}" width="10" height="9" fill="#a08040" stroke="#6a4818" stroke-width="0.5"/>
+  <polygon points="${vx+56},${vy+4} ${vx+74},${vy+4} ${vx+65},${vy-6}" fill="#8a6030"/>
 
-  <!-- L-shaped house SW -->
-  <rect x="${vx-68}" y="${vy+24}" width="22" height="14" fill="#744018" stroke="#3a1e06" stroke-width="0.7"/>
-  <rect x="${vx-56}" y="${vy+38}" width="14" height="11" fill="#6a3818" stroke="#3a1e06" stroke-width="0.6"/>
-  <polygon points="${vx-68},${vy+24} ${vx-46},${vy+24} ${vx-57},${vy+14}" fill="#543010"/>
+  <!-- L-shaped house SW — dark timber -->
+  <rect x="${vx-68}" y="${vy+24}" width="22" height="14" fill="#5a2e08" stroke="#2a1204" stroke-width="0.7"/>
+  <rect x="${vx-56}" y="${vy+38}" width="14" height="11" fill="#4a2408" stroke="#2a1204" stroke-width="0.6"/>
+  <polygon points="${vx-68},${vy+24} ${vx-46},${vy+24} ${vx-57},${vy+14}" fill="#3e1e06"/>
 
-  <!-- Wide barn S -->
-  <rect x="${vx-24}" y="${vy+52}" width="36" height="14" fill="#7a4a18" stroke="#3a1e06" stroke-width="0.8"/>
-  <polygon points="${vx-24},${vy+52} ${vx+12},${vy+52} ${vx-6},${vy+40}" fill="#5a3410"/>
-  <rect x="${vx-16}" y="${vy+40}" width="4" height="8" fill="#3a2008"/>
+  <!-- Wide barn S — pale daub, large -->
+  <rect x="${vx-24}" y="${vy+52}" width="36" height="14" fill="#d8b87a" stroke="#8a6030" stroke-width="0.8"/>
+  <polygon points="${vx-24},${vy+52} ${vx+12},${vy+52} ${vx-6},${vy+40}" fill="#b09050"/>
+  <rect x="${vx-16}" y="${vy+40}" width="4" height="8" fill="#6a4828"/>
 
-  <!-- Small hut SE -->
-  <rect x="${vx+14}" y="${vy+44}" width="14" height="12" fill="#663c10" stroke="#3a1e06" stroke-width="0.6"/>
-  <polygon points="${vx+14},${vy+44} ${vx+28},${vy+44} ${vx+21},${vy+34}" fill="#482808"/>
+  <!-- Small hut SE — standard brown -->
+  <rect x="${vx+14}" y="${vy+44}" width="14" height="12" fill="#7a4818" stroke="#3a1e06" stroke-width="0.6"/>
+  <polygon points="${vx+14},${vy+44} ${vx+28},${vy+44} ${vx+21},${vy+34}" fill="#5a3210"/>
 
-  <!-- Tiny square hut NNW -->
-  <rect x="${vx-42}" y="${vy-54}" width="12" height="12" fill="#6e3e10" stroke="#3a1e06" stroke-width="0.6"/>
-  <polygon points="${vx-42},${vy-54} ${vx-30},${vy-54} ${vx-36},${vy-64}" fill="#4c2a08"/>
+  <!-- Tiny square hut NNW — weathered grey-brown -->
+  <rect x="${vx-42}" y="${vy-54}" width="12" height="12" fill="#8a6840" stroke="#5a3e20" stroke-width="0.6"/>
+  <polygon points="${vx-42},${vy-54} ${vx-30},${vy-54} ${vx-36},${vy-64}" fill="#6a4e28"/>
 
-  <!-- Round-ended barn SE -->
-  <rect x="${vx+30}" y="${vy+30}" width="28" height="12" fill="#7a4020" stroke="#3a1e06" stroke-width="0.7"/>
-  <ellipse cx="${vx+58}" cy="${vy+36}" rx="6" ry="6" fill="#7a4020" stroke="#3a1e06" stroke-width="0.7"/>
-  <polygon points="${vx+30},${vy+30} ${vx+58},${vy+30} ${vx+44},${vy+20}" fill="#5a3010"/>
+  <!-- Round-ended barn SE — dark timber -->
+  <rect x="${vx+30}" y="${vy+30}" width="28" height="12" fill="#5a2e08" stroke="#2a1204" stroke-width="0.7"/>
+  <ellipse cx="${vx+58}" cy="${vy+36}" rx="6" ry="6" fill="#5a2e08" stroke="#2a1204" stroke-width="0.7"/>
+  <polygon points="${vx+30},${vy+30} ${vx+58},${vy+30} ${vx+44},${vy+20}" fill="#3e1e06"/>
 
   <text x="${vx}" y="${vy+84}" text-anchor="middle" font-family="'Cinzel',serif" font-size="11.5" fill="#1e0e04" letter-spacing="0.04em">The Village</text>
 </g>
@@ -3481,19 +3484,59 @@ ${roadSvg(cfg.roads)}
   <rect x="${vx-18}" y="${vy-116}" width="36" height="50" fill="transparent" stroke="none"/>
 </g>
 
-<!-- ── THE HALL ── -->
+<!-- ── THE HALL & LORD'S CLOSE ── -->
 <g id="${svgId}-hall" class="mz" data-char="${charName}" data-key="hall" style="cursor:pointer">
-  <rect x="${hallX-10}" y="${hallY-10}" width="96" height="76" rx="3" fill="${t.field1}" fill-opacity="0.18" stroke="#8a7018" stroke-width="1" stroke-dasharray="5,3"/>
-  <rect x="${hallX+2}" y="${hallY}" width="58" height="42" rx="2" fill="#522408" stroke="#320e04" stroke-width="1.5"/>
-  <rect x="${hallX+6}" y="${hallY-5}" width="50" height="9" rx="1" fill="#622e0e"/>
-  <rect x="${hallX+44}" y="${hallY-15}" width="16" height="24" rx="1" fill="#421e06"/>
-  <polygon points="${hallX+44},${hallY-15} ${hallX+60},${hallY-15} ${hallX+52},${hallY-24}" fill="#320e04"/>
-  <rect x="${hallX+20}" y="${hallY+26}" width="14" height="18" rx="1" fill="#220a04"/>
-  <rect x="${hallX+4}" y="${hallY+46}" width="32" height="18" rx="1" fill="#705010" stroke="#4a3008" stroke-width="0.7"/>
-  <polygon points="${hallX+4},${hallY+46} ${hallX+36},${hallY+46} ${hallX+20},${hallY+36}" fill="#604010"/>
+  <!-- Lord's close outer boundary — solid thin line, more defined -->
+  <rect x="${hallX-18}" y="${hallY-22}" width="118" height="108" rx="3"
+        fill="${t.village}" fill-opacity="0.25"
+        stroke="#6a4a10" stroke-width="1.5"/>
+  <!-- Inner close ground — slightly warmer fill -->
+  <rect x="${hallX-14}" y="${hallY-18}" width="110" height="100" rx="2"
+        fill="#c8a858" fill-opacity="0.2" stroke="none"/>
+
+  <!-- Path from gate to hall door -->
+  <line x1="${hallX+34}" y1="${hallY+88}" x2="${hallX+30}" y2="${hallY+44}"
+        stroke="#9a7830" stroke-width="2" opacity="0.4" stroke-linecap="round"/>
+
+  <!-- HALL BUILDING — main house -->
+  <rect x="${hallX+2}" y="${hallY}" width="58" height="42" rx="1" fill="#522408" stroke="#320e04" stroke-width="1.5"/>
+  <rect x="${hallX+6}" y="${hallY-6}" width="50" height="9" rx="1" fill="#622e0e"/>
+  <!-- Tower / solar -->
+  <rect x="${hallX+44}" y="${hallY-18}" width="16" height="26" rx="1" fill="#421e06" stroke="#320e04" stroke-width="1"/>
+  <polygon points="${hallX+44},${hallY-18} ${hallX+60},${hallY-18} ${hallX+52},${hallY-28}" fill="#320e04"/>
+  <!-- Main door -->
+  <rect x="${hallX+24}" y="${hallY+24}" width="11" height="18" rx="1" fill="#220a04"/>
+  <!-- Window slits -->
+  <rect x="${hallX+8}" y="${hallY+10}" width="5" height="8" rx="1" fill="#1a0804" opacity="0.8"/>
+  <rect x="${hallX+46}" y="${hallY+10}" width="5" height="8" rx="1" fill="#1a0804" opacity="0.8"/>
+
+  <!-- BARN — south of hall -->
+  <rect x="${hallX+4}" y="${hallY+50}" width="38" height="18" rx="1" fill="#705010" stroke="#4a3008" stroke-width="0.9"/>
+  <polygon points="${hallX+4},${hallY+50} ${hallX+42},${hallY+50} ${hallX+23},${hallY+40}" fill="#604010"/>
+
+  <!-- STABLE — west side, smaller -->
+  <rect x="${hallX-14}" y="${hallY+4}" width="14" height="26" rx="1" fill="#7a5618" stroke="#4a3008" stroke-width="0.8"/>
+  <polygon points="${hallX-14},${hallY+4} ${hallX},${hallY+4} ${hallX-7},${hallY-4}" fill="#6a4a12"/>
+
+  <!-- WELL — small circle with cross-beam -->
+  <circle cx="${hallX+86}" cy="${hallY+30}" r="5" fill="none" stroke="#5a3808" stroke-width="1.2"/>
+  <circle cx="${hallX+86}" cy="${hallY+30}" r="3" fill="#3a2808" opacity="0.5"/>
+  <line x1="${hallX+82}" y1="${hallY+24}" x2="${hallX+90}" y2="${hallY+24}" stroke="#5a3808" stroke-width="1"/>
+  <line x1="${hallX+86}" y1="${hallY+22}" x2="${hallX+86}" y2="${hallY+26}" stroke="#5a3808" stroke-width="1"/>
+
+  <!-- KITCHEN GARDEN — small hatch pattern patch -->
+  <rect x="${hallX+70}" y="${hallY+48}" width="22" height="16" rx="1" fill="#8a8838" fill-opacity="0.4" stroke="#5a5820" stroke-width="0.8"/>
+  <line x1="${hallX+70}" y1="${hallY+52}" x2="${hallX+92}" y2="${hallY+52}" stroke="#5a5820" stroke-width="0.5" opacity="0.6"/>
+  <line x1="${hallX+70}" y1="${hallY+57}" x2="${hallX+92}" y2="${hallY+57}" stroke="#5a5820" stroke-width="0.5" opacity="0.6"/>
+  <line x1="${hallX+70}" y1="${hallY+62}" x2="${hallX+92}" y2="${hallY+62}" stroke="#5a5820" stroke-width="0.5" opacity="0.6"/>
+
+  <!-- GATE — gap in boundary wall with posts -->
+  <rect x="${hallX+26}" y="${hallY+84}" width="5" height="10" rx="1" fill="#5a3808"/>
+  <rect x="${hallX+40}" y="${hallY+84}" width="5" height="10" rx="1" fill="#5a3808"/>
+
   ${bonusMarker}
   ${improvSymbols}
-  <text x="${hallX+38}" y="${hallY+78}" text-anchor="middle" font-family="'Cinzel',serif" font-size="10" fill="#1a0a04" letter-spacing="0.04em">The Hall</text>
+  <text x="${hallX+38}" y="${hallY+104}" text-anchor="middle" font-family="'Cinzel',serif" font-size="10" fill="#1a0a04" letter-spacing="0.04em">The Hall</text>
 </g>
 
 <!-- ── TITLE ── -->
