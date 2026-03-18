@@ -3620,6 +3620,7 @@ function manorPositTip(e) {
 }
 
 function renderEstatesTopLevel(){
+  try {
   const panel = document.getElementById('mainPanel');
   const chars = Object.keys(MANOR_DATA);
   if(!activeFamilyTab || !MANOR_DATA[activeFamilyTab]) activeFamilyTab = chars[0];
@@ -3648,6 +3649,12 @@ function renderEstatesTopLevel(){
   if (estateSubTab==='bookkeeping') {
     const bp = document.getElementById('bookkeepingPanel');
     if (bp) bp.innerHTML = bookHtml;
+  }
+  } catch(e) {
+    const panel = document.getElementById('mainPanel');
+    if (panel) panel.innerHTML = `<div style="padding:2rem;font-family:'Crimson Pro',serif;color:#8a1a1a;background:var(--parchment);border-radius:4px;border:1px solid #8a1a1a">
+      <strong>Estate render error:</strong> ${e.message}<br><pre style="font-size:.7rem;margin-top:.5rem;white-space:pre-wrap">${e.stack||''}</pre>
+    </div>`;
   }
 }
 
