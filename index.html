@@ -379,9 +379,7 @@ function setMode(m){
   const fullWidth = (m==='family'||m==='conflicts'||m==='estates');
   sidebar.style.display = fullWidth?'none':'';
   document.getElementById('appContainer').style.gridTemplateColumns = fullWidth?'1fr':'270px 1fr';
-document.addEventListener('DOMContentLoaded', () => {
   render();
-});
 }
 
 function filtered(){
