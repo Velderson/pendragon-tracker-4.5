@@ -835,8 +835,6 @@ function buildFamilyTree(charName){
   const fatherNode = allNodes.find(n => n.isfather);
   const motherNode = allNodes.find(n => n.ismother);
   const pcNode     = allNodes.find(n => n.pc);
-  // Player knights' fathers are always dead
-  if(fatherNode) fatherNode.status = 'dead';
 
   // ── Inject placeholder grandparent nodes if missing ──────────
   // So the layout always has a paternal root (right) and maternal root (left).
@@ -1270,12 +1268,12 @@ function ftDrawTree(){
         ctx.stroke();
       }
 
-      // Horizontal bar spanning all children
+      // Horizontal bar spanning all children (always draw to connect offset nodes)
       const allBarX = partner ? [anchorX, (par.x + partner.x) / 2, ...legitKids.map(k => k.x)]
                                : [anchorX, ...legitKids.map(k => k.x)];
       const finalLeft  = Math.min(...allBarX);
       const finalRight = Math.max(...allBarX);
-      if(legitKids.length > 1 || partner){
+      if(finalRight - finalLeft > 1){
         ctx.beginPath();
         ctx.moveTo(finalLeft, barY);
         ctx.lineTo(finalRight, barY);
@@ -1346,20 +1344,19 @@ function ftDrawTree(){
 
     // PC star
     if(n.pc){
-      ctx.font       = `bold ${10/ftZoom}px serif`;
+      ctx.font       = `bold 10px serif`;
       ctx.fillStyle  = '#ffd700';
       ctx.textAlign  = 'right';
       ctx.globalAlpha = 1;
       ctx.fillText('★', nx+BW-3, ny+12);
     }
 
-    const fs = 1 / ftZoom;
     ctx.textAlign = 'center';
     ctx.globalAlpha = 1;
 
     // Name (wraps if contains \n)
     const nameLines = n.label.split('\n');
-    ctx.font      = `${n.pc ? 'bold ' : ''}${9*fs}px Cinzel,serif`;
+    ctx.font      = `${n.pc ? 'bold ' : ''}9px Cinzel,serif`;
     ctx.fillStyle = col.text;
     if(nameLines.length > 1){
       ctx.fillText(nameLines[0], n.x, ny + 13);
@@ -1368,7 +1365,7 @@ function ftDrawTree(){
       ctx.fillText(n.label, n.x, ny + 14);
       // Role (first part only, truncated)
       if(n.role){
-        ctx.font        = `italic ${7*fs}px serif`;
+        ctx.font        = `italic 7px serif`;
         ctx.globalAlpha = 0.85;
         ctx.fillStyle   = col.text;
         ctx.fillText(n.role.split('·')[0].trim().slice(0, 24), n.x, ny + 25);
@@ -1377,7 +1374,7 @@ function ftDrawTree(){
     // Age / glory
     const sub = [n.age ? 'Age '+n.age : '', n.glory ? '✦'+n.glory : ''].filter(Boolean).join('  ');
     if(sub){
-      ctx.font        = `${6*fs}px serif`;
+      ctx.font        = `6px serif`;
       ctx.globalAlpha = 0.75;
       ctx.fillStyle   = col.text;
       ctx.fillText(sub, n.x, ny + 37);
