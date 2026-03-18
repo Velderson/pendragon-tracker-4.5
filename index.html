@@ -917,12 +917,14 @@ function buildFamilyTree(charName){
     }
   }
 
-  // Tag upward from father/mother to grandparents
+  // Tag upward from father/mother to grandparents, then tag all their descendants too
   function tagUp(nodeId, label){
     let cur = allNodes.find(n => n.id === nodeId);
     while(cur){
       if(!side.has(cur.id)) side.set(cur.id, label);
       allNodes.forEach(n => { if(n.spouseOf === cur.id && !side.has(n.id)) side.set(n.id, label); });
+      // Also tag all descendants of this ancestor (sibling subtrees)
+      tagTree(cur.id, label);
       if(!cur.parentId) break;
       cur = allNodes.find(n => n.id === cur.parentId);
     }
@@ -1229,15 +1231,13 @@ function ftDrawTree(){
     const illegKids  = kids.filter(k => k.illegitimate);
     const legitKids  = kids.filter(k => !k.illegitimate);
 
-    // Determine anchor point: if parent has a spouse, drop from couple midpoint
+    // Determine anchor point for child connectors
+    // When a couple exists, draw from the parent's bottom, but add a short
+    // stub from the couple-line midpoint to show the marriage connection
     let anchorX = par.x;
     let anchorY = par.y + BH/2;
     const partnerId = coupleMap.get(pid);
     const partner = partnerId ? nodeMap.get(partnerId) : null;
-    if(partner){
-      anchorX = (par.x + partner.x) / 2;
-      anchorY = (par.y + partner.y) / 2;
-    }
 
     // Draw legitimate children grouped
     if(legitKids.length){
@@ -1250,17 +1250,35 @@ function ftDrawTree(){
       ctx.setLineDash([]);
       ctx.globalAlpha = 0.8;
 
-      // Vertical drop from anchor (couple midpoint or parent)
-      ctx.beginPath();
-      ctx.moveTo(anchorX, anchorY);
-      ctx.lineTo(anchorX, barY);
-      ctx.stroke();
+      // If couple: draw stub from couple midpoint down, then over to parent X
+      if(partner){
+        const coupleX = (par.x + partner.x) / 2;
+        const coupleY = (par.y + partner.y) / 2;
+        ctx.beginPath();
+        ctx.moveTo(coupleX, coupleY);
+        ctx.lineTo(coupleX, barY);
+        // Horizontal to align with children spread
+        if(Math.abs(coupleX - anchorX) > 2){
+          ctx.lineTo(anchorX, barY);
+        }
+        ctx.stroke();
+      } else {
+        // No couple: simple vertical drop from parent
+        ctx.beginPath();
+        ctx.moveTo(anchorX, anchorY);
+        ctx.lineTo(anchorX, barY);
+        ctx.stroke();
+      }
 
       // Horizontal bar spanning all children
-      if(legitKids.length > 1){
+      const allBarX = partner ? [anchorX, (par.x + partner.x) / 2, ...legitKids.map(k => k.x)]
+                               : [anchorX, ...legitKids.map(k => k.x)];
+      const finalLeft  = Math.min(...allBarX);
+      const finalRight = Math.max(...allBarX);
+      if(legitKids.length > 1 || partner){
         ctx.beginPath();
-        ctx.moveTo(leftX, barY);
-        ctx.lineTo(rightX, barY);
+        ctx.moveTo(finalLeft, barY);
+        ctx.lineTo(finalRight, barY);
         ctx.stroke();
       }
 
