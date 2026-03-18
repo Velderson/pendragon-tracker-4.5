@@ -2789,7 +2789,589 @@ const MANOR_DATA = {
 };
 
 let activeEconTab = 'Rhydian';
+let estateSubTab = 'map';
 
+// ── MANOR MAP CONFIG ──────────────────────────────────────────────────────
+// Per-family geographic config: river routing, road type, hall direction,
+// landscape zones, colour tone. Derived from Salisbury regional map.
+const MANOR_MAP_CONFIG = {
+  Mellyr: {
+    manorName: 'Newton Tony',
+    // Bourne river runs N→S just east of the village
+    river: { enterEdge:'n', enterPct:0.72, exitEdge:'s', exitPct:0.68, width:4, name:'River Bourne', color:'#5888b0' },
+    // Poor road connects W toward Amesbury
+    roads: [{ type:'poor', from:[0.45,0.48], to:[0.0,0.48] }, { type:'poor', from:[0.48,0.52], to:[0.48,1.0] }],
+    hallDir:'sw', tone:'warm',
+    landscape:{ ne:'pasture', e:'woodland', s:'meadow', sw:'waste', w:'fallow' },
+    lotCount:10, villageOffset:[0,0],
+  },
+  Agragan: {
+    manorName: 'Cholderton',
+    // Bourne headwaters, enters N exits SE — slightly further upstream than Newton Tony
+    river: { enterEdge:'n', enterPct:0.58, exitEdge:'s', exitPct:0.62, width:3, name:'River Bourne', color:'#5888b0' },
+    roads: [{ type:'poor', from:[0.45,0.50], to:[0.0,0.52] }],
+    hallDir:'sw', tone:'warm',
+    landscape:{ n:'fallow', ne:'pasture', e:'pasture', s:'meadow', sw:'waste', w:'fallow' },
+    lotCount:9, villageOffset:[-20,10],
+  },
+  Rhydian: {
+    manorName: 'Stapleford',
+    // Wylye river runs W→E through the valley — manor sits right on it
+    river: { enterEdge:'w', enterPct:0.58, exitEdge:'e', exitPct:0.62, width:5, name:'River Wylye', color:'#4878a8' },
+    // Good road runs E–W along the Wylye valley
+    roads: [{ type:'good', from:[0.0,0.56], to:[1.0,0.56] }, { type:'poor', from:[0.48,0.52], to:[0.48,0.0] }],
+    hallDir:'w', tone:'cool',
+    landscape:{ n:'fallow', ne:'woodland', e:'pasture', s:'meadow', sw:'meadow', w:'waste' },
+    lotCount:10, villageOffset:[10,-10],
+  },
+  Timotheus: {
+    manorName: 'Laverstock',
+    // Avon river, enters N exits S — manor essentially sits on the river bank
+    river: { enterEdge:'n', enterPct:0.42, exitEdge:'s', exitPct:0.45, width:5, name:'River Avon', color:'#4070a0' },
+    // Good road from Sarum to the W
+    roads: [{ type:'good', from:[0.0,0.50], to:[0.44,0.50] }, { type:'poor', from:[0.44,0.50], to:[0.44,1.0] }],
+    hallDir:'n', tone:'neutral',
+    landscape:{ n:'pasture', ne:'pasture', e:'woodland', s:'meadow', sw:'waste', w:'fallow' },
+    lotCount:10, villageOffset:[0,0],
+  },
+  Gwegon: {
+    manorName: 'Broughton',
+    // Small stream enters NW exits SE
+    river: { enterEdge:'n', enterPct:0.38, exitEdge:'s', exitPct:0.55, width:3, name:'Broughton Stream', color:'#6090b8' },
+    // Poor road west toward Sarum
+    roads: [{ type:'poor', from:[0.0,0.52], to:[0.5,0.52] }],
+    hallDir:'sw', tone:'green',
+    landscape:{ n:'woodland', ne:'woodland', e:'pasture', s:'meadow', sw:'waste', w:'fallow' },
+    lotCount:9, villageOffset:[15,0],
+  },
+};
+
+// ── MANOR MAP TONE PALETTES ───────────────────────────────────────────────
+const MANOR_TONES = {
+  warm:    { bg:'#e8d4a0', field1:'#d8bc6a', field2:'#ccb060', fallow:'#c8aa50', pasture:'#b8d088', woodland:'#7aaa58', meadow:'#a8c870', waste:'#aca860', village:'#d0ba80', road:'#b09048' },
+  cool:    { bg:'#ddd4c0', field1:'#ccc8a0', field2:'#c0bc90', fallow:'#bab888', pasture:'#a8c880', woodland:'#6a9848', meadow:'#98b868', waste:'#989878', village:'#c8c098', road:'#a09060' },
+  neutral: { bg:'#e4d8b0', field1:'#d4bc68', field2:'#c8b05c', fallow:'#c0a850', pasture:'#b0cc78', woodland:'#70a050', meadow:'#a0c068', waste:'#a8a058', village:'#ccc080', road:'#a89040' },
+  green:   { bg:'#dce4c0', field1:'#c8cc80', field2:'#b8c070', fallow:'#b0b860', pasture:'#a0c870', woodland:'#5a9040', meadow:'#90b860', waste:'#989860', village:'#c0c880', road:'#909840' },
+};
+
+// ── RENDER MANOR MAP SVG ──────────────────────────────────────────────────
+function renderManorMapSVG(charName) {
+  const cfg = MANOR_MAP_CONFIG[charName];
+  if (!cfg) return '<div style="padding:2rem;font-style:italic;color:#3d2a0e">No map config for this manor.</div>';
+  const md = MANOR_DATA[charName];
+  const t = MANOR_TONES[cfg.tone] || MANOR_TONES.warm;
+
+  // Village centre
+  const W=960, H=820;
+  const vx = 480 + (cfg.villageOffset[0]||0);
+  const vy = 390 + (cfg.villageOffset[1]||0);
+
+  // Improvements from manor data → feature symbols on map
+  const homeManor = md ? md.manors[0] : null;
+  const improvements = homeManor ? (homeManor.improvements||[]) : [];
+  const bonus = homeManor ? (homeManor.bonus||'') : '';
+
+  // Build river path
+  function riverPath(r) {
+    const edgePt = (edge, pct) => {
+      if (edge==='n') return [pct*W, 0];
+      if (edge==='s') return [pct*W, H];
+      if (edge==='w') return [0, pct*H];
+      if (edge==='e') return [W, pct*H];
+      return [W/2, H/2];
+    };
+    const [x1,y1] = edgePt(r.enterEdge, r.enterPct);
+    const [x2,y2] = edgePt(r.exitEdge,  r.exitPct);
+    // Route river near village if it passes close
+    const mx = (x1+x2)/2 + (Math.random()*40-20);
+    const my = (y1+y2)/2 + (Math.random()*40-20);
+    return { path:`M${x1},${y1} Q${mx},${my} ${x2},${y2}`, x1,y1,x2,y2,mx,my };
+  }
+  const rp = riverPath(cfg.river);
+
+  // Road paths
+  function roadSvg(roads) {
+    return roads.map(rd => {
+      const x1=rd.from[0]*W, y1=rd.from[1]*H, x2=rd.to[0]*W, y2=rd.to[1]*H;
+      const dash = rd.type==='good' ? '' : 'stroke-dasharray="8,5"';
+      const w = rd.type==='good' ? 3.5 : 2;
+      return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${t.road}" stroke-width="${w}" opacity="0.55" stroke-linecap="round" ${dash}/>`;
+    }).join('');
+  }
+
+  // Feature icons near hall
+  const hallX = cfg.hallDir==='sw' ? vx-160 : cfg.hallDir==='w' ? vx-180 : cfg.hallDir==='n' ? vx-20 : vx+140;
+  const hallY = cfg.hallDir==='sw' ? vy+130 : cfg.hallDir==='w' ? vy+20  : cfg.hallDir==='n' ? vy-160 : vy+80;
+
+  // Improvement SVG symbols
+  const IMPROV_SVG = {
+    'Dovecote':    (x,y)=>`<g><ellipse cx="${x}" cy="${y}" rx="14" ry="18" fill="#c0a870" stroke="#7a5820" stroke-width="0.9"/><ellipse cx="${x}" cy="${y-8}" rx="8" ry="5" fill="#b09060"/><line x1="${x-14}" y1="${y+4}" x2="${x+14}" y2="${y+4}" stroke="#7a5820" stroke-width="0.8"/><text x="${x}" y="${y+30}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9" fill="#3a1a06">Dovecote</text></g>`,
+    'Scriptorium': (x,y)=>`<g><rect x="${x-12}" y="${y-14}" width="24" height="28" rx="2" fill="#d4c090" stroke="#7a5820" stroke-width="0.9"/><line x1="${x-7}" y1="${y-6}" x2="${x+7}" y2="${y-6}" stroke="#5a3010" stroke-width="0.7"/><line x1="${x-7}" y1="${y}" x2="${x+7}" y2="${y}" stroke="#5a3010" stroke-width="0.7"/><line x1="${x-7}" y1="${y+6}" x2="${x+7}" y2="${y+6}" stroke="#5a3010" stroke-width="0.7"/><text x="${x}" y="${y+22}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9" fill="#3a1a06">Scriptorium</text></g>`,
+    'Apiary':      (x,y)=>`<g><ellipse cx="${x}" cy="${y}" rx="12" ry="14" fill="#d4a840" stroke="#7a6010" stroke-width="0.9"/><line x1="${x-8}" y1="${y-4}" x2="${x+8}" y2="${y-4}" stroke="#a07010" stroke-width="0.7"/><line x1="${x-8}" y1="${y+2}" x2="${x+8}" y2="${y+2}" stroke="#a07010" stroke-width="0.7"/><text x="${x}" y="${y+22}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9" fill="#3a1a06">Apiary</text></g>`,
+  };
+
+  const improvSymbols = improvements.map((imp,i) => {
+    const fn = IMPROV_SVG[imp];
+    if (!fn) return '';
+    return fn(hallX + 60 + i*50, hallY - 20);
+  }).join('');
+
+  // Bonus marker
+  const bonusMarker = bonus.includes('Faer') ? `<text x="${vx+30}" y="${vy-55}" font-family="'IM Fell English',serif" font-style="italic" font-size="9.5" fill="#5a3080" opacity="0.8">✦ Site of Faerie Battle</text>` :
+    bonus.includes('Roman') ? `<text x="${hallX+10}" y="${hallY-35}" font-family="'IM Fell English',serif" font-style="italic" font-size="9.5" fill="#6a3808" opacity="0.8">⚔ Ancient battlefield</text>` :
+    bonus.includes('Haunt') ? `<text x="${hallX+10}" y="${hallY-35}" font-family="'IM Fell English',serif" font-style="italic" font-size="9.5" fill="#3a1a5a" opacity="0.8">☽ Haunted graveyard</text>` :
+    bonus.includes('Hermit') ? `<text x="${hallX+10}" y="${hallY-35}" font-family="'IM Fell English',serif" font-style="italic" font-size="9.5" fill="#2a4a2a" opacity="0.8">⛪ Hermitage</text>` :
+    bonus.includes('Plinth') ? `<text x="${hallX+10}" y="${hallY-35}" font-family="'IM Fell English',serif" font-style="italic" font-size="9.5" fill="#5a4a10" opacity="0.8">🗿 Standing stone</text>` : '';
+
+  // Lot count variant — slightly different wedge angles per manor
+  const lotCount = cfg.lotCount || 10;
+
+  // Village polygon vertices — slightly different per manor tone
+  const vOff = cfg.tone==='cool' ? 5 : cfg.tone==='green' ? -5 : 0;
+  const vPoly = [
+    [vx-65+vOff, vy-72],[vx-28,vy-95],[vx+18,vy-95],[vx+56,vy-82],
+    [vx+74,vy-50],[vx+78,vy-16],[vx+68,vy+18],[vx+48,vy+44],
+    [vx+18,vy+60],[vx-18,vy+62],[vx-48,vy+52],[vx-72,vy+32],
+    [vx-86,vy+2],[vx-84,vy-32],[vx-72,vy-56]
+  ].map(p=>p.join(',')).join(' ');
+
+  // Mill pond — position near river
+  const millX = cfg.river.enterEdge==='w' ? vx+80 : vx+70;
+  const millY = cfg.river.enterEdge==='w' ? vy+20 : vy+65;
+
+  // Stream connects mill to river
+  const streamPath = `M${millX},${millY+30} Q${millX+20},${(millY+30+rp.y2)/2} ${rp.x2-10},${rp.y2-10}`;
+
+  const svgId = 'msv_' + charName;
+
+  return `
+<div style="position:relative;background:#e8d4a0;border:2px solid var(--parchment-shadow);border-radius:3px;overflow:hidden;line-height:0">
+<svg id="${svgId}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%">
+<defs>
+  <pattern id="mp-h0${charName}" x="0" y="0" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(10)"><rect width="8" height="16" fill="#9a7820" opacity="0.2"/></pattern>
+  <pattern id="mp-h1${charName}" x="0" y="0" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(55)"><rect width="8" height="16" fill="#9a7820" opacity="0.2"/></pattern>
+  <pattern id="mp-h2${charName}" x="0" y="0" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(100)"><rect width="8" height="16" fill="#9a7820" opacity="0.2"/></pattern>
+  <pattern id="mp-h3${charName}" x="0" y="0" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(145)"><rect width="8" height="16" fill="#9a7820" opacity="0.2"/></pattern>
+  <pattern id="mp-h4${charName}" x="0" y="0" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(25)"><rect width="8" height="16" fill="#9a7820" opacity="0.2"/></pattern>
+  <pattern id="mp-h5${charName}" x="0" y="0" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(70)"><rect width="8" height="16" fill="#9a7820" opacity="0.2"/></pattern>
+  <pattern id="mp-h6${charName}" x="0" y="0" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(115)"><rect width="8" height="16" fill="#9a7820" opacity="0.2"/></pattern>
+  <pattern id="mp-h7${charName}" x="0" y="0" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(160)"><rect width="8" height="16" fill="#9a7820" opacity="0.2"/></pattern>
+  <pattern id="mp-h8${charName}" x="0" y="0" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(40)"><rect width="8" height="16" fill="#9a7820" opacity="0.2"/></pattern>
+  <pattern id="mp-h9${charName}" x="0" y="0" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(85)"><rect width="8" height="16" fill="#9a7820" opacity="0.2"/></pattern>
+  <pattern id="mp-fx${charName}" x="0" y="0" width="12" height="12" patternUnits="userSpaceOnUse"><line x1="0" y1="6" x2="12" y2="6" stroke="#8a6010" stroke-width="0.9" opacity="0.32"/><line x1="6" y1="0" x2="6" y2="12" stroke="#8a6010" stroke-width="0.9" opacity="0.32"/></pattern>
+  <pattern id="mp-pd${charName}" x="0" y="0" width="10" height="10" patternUnits="userSpaceOnUse"><circle cx="5" cy="5" r="1.5" fill="#3a6818" opacity="0.38"/></pattern>
+  <pattern id="mp-wd${charName}" x="0" y="0" width="14" height="14" patternUnits="userSpaceOnUse"><circle cx="7" cy="7" r="3" fill="#284810" opacity="0.3"/></pattern>
+</defs>
+
+<!-- Background -->
+<rect width="${W}" height="${H}" fill="${t.bg}"/>
+<rect x="0" y="0" width="${W}" height="${H}" fill="none" stroke="#6a4810" stroke-width="4" opacity="0.3"/>
+<rect x="6" y="6" width="${W-12}" height="${H-12}" fill="none" stroke="#8a6020" stroke-width="1" opacity="0.2"/>
+
+<!-- ── FIELD LOTS (seamless tessellation around village) ── -->
+
+<!-- LOT 1 NW -->
+<g id="${svgId}-lot1" class="mz lot" data-char="${charName}" data-key="lot1" style="cursor:pointer">
+  <polygon points="${vx-65+vOff},${vy-72} ${vx-72},${vy-56} ${vx-84},${vy-32} ${vx-160},${vy-100} ${vx-100},${vy-180} 0,${vy-230} 0,0 ${vx-180},0" fill="${t.field1}" stroke="#8a6810" stroke-width="1.2"/>
+  <polygon points="${vx-65+vOff},${vy-72} ${vx-72},${vy-56} ${vx-84},${vy-32} ${vx-160},${vy-100} ${vx-100},${vy-180} 0,${vy-230} 0,0 ${vx-180},0" fill="url(#mp-h0${charName})"/>
+  <line x1="${vx-180}" y1="0" x2="${vx-82}" y2="${vy-35}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <line x1="${vx-140}" y1="0" x2="${vx-76}" y2="${vy-46}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <line x1="${vx-100}" y1="0" x2="${vx-72}" y2="${vy-58}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <text x="${vx-145}" y="${vy-115}" text-anchor="middle" font-family="'Cinzel',serif" font-size="14" font-weight="600" fill="#3a2008" opacity="0.65">1</text>
+</g>
+
+<!-- LOT 2 N -->
+<g id="${svgId}-lot2" class="mz lot" data-char="${charName}" data-key="lot2" style="cursor:pointer">
+  <polygon points="${vx-65+vOff},${vy-72} ${vx-28},${vy-95} ${vx+18},${vy-95} ${vx-10},${vy-220} ${vx-180},${vy-230} ${vx-100},${vy-180} ${vx-160},${vy-100}" fill="${t.field2}" stroke="#8a6810" stroke-width="1.2"/>
+  <polygon points="${vx-65+vOff},${vy-72} ${vx-28},${vy-95} ${vx+18},${vy-95} ${vx-10},${vy-220} ${vx-180},${vy-230} ${vx-100},${vy-180} ${vx-160},${vy-100}" fill="url(#mp-h1${charName})"/>
+  <line x1="${vx-90}" y1="${vy-225}" x2="${vx-68}" y2="${vy-72}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <line x1="${vx-50}" y1="${vy-222}" x2="${vx-30}" y2="${vy-96}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <text x="${vx-60}" y="${vy-165}" text-anchor="middle" font-family="'Cinzel',serif" font-size="14" font-weight="600" fill="#3a2008" opacity="0.65">2</text>
+</g>
+
+<!-- LOT 3 NNE -->
+<g id="${svgId}-lot3" class="mz lot" data-char="${charName}" data-key="lot3" style="cursor:pointer">
+  <polygon points="${vx-28},${vy-95} ${vx+18},${vy-95} ${vx+56},${vy-82} ${vx+120},${vy-210} ${vx+20},${vy-240} ${vx-10},${vy-220}" fill="${t.field1}" stroke="#8a6810" stroke-width="1.2"/>
+  <polygon points="${vx-28},${vy-95} ${vx+18},${vy-95} ${vx+56},${vy-82} ${vx+120},${vy-210} ${vx+20},${vy-240} ${vx-10},${vy-220}" fill="url(#mp-h2${charName})"/>
+  <line x1="${vx}" y1="${vy-240}" x2="${vx+18}" y2="${vy-95}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <line x1="${vx+40}" y1="${vy-238}" x2="${vx+55}" y2="${vy-83}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <text x="${vx+55}" y="${vy-170}" text-anchor="middle" font-family="'Cinzel',serif" font-size="14" font-weight="600" fill="#3a2008" opacity="0.65">3</text>
+</g>
+
+<!-- LOT 4 NE -->
+<g id="${svgId}-lot4" class="mz lot" data-char="${charName}" data-key="lot4" style="cursor:pointer">
+  <polygon points="${vx+56},${vy-82} ${vx+74},${vy-50} ${vx+250},${vy-80} ${vx+280},${vy-200} ${vx+120},${vy-210}" fill="${t.field2}" stroke="#8a6810" stroke-width="1.2"/>
+  <polygon points="${vx+56},${vy-82} ${vx+74},${vy-50} ${vx+250},${vy-80} ${vx+280},${vy-200} ${vx+120},${vy-210}" fill="url(#mp-h3${charName})"/>
+  <line x1="${vx+130}" y1="${vy-212}" x2="${vx+75}" y2="${vy-50}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <line x1="${vx+200}" y1="${vy-200}" x2="${vx+165}" y2="${vy-65}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <text x="${vx+175}" y="${vy-145}" text-anchor="middle" font-family="'Cinzel',serif" font-size="14" font-weight="600" fill="#3a2008" opacity="0.65">4</text>
+</g>
+
+<!-- LOT 5 E -->
+<g id="${svgId}-lot5" class="mz lot" data-char="${charName}" data-key="lot5" style="cursor:pointer">
+  <polygon points="${vx+74},${vy-50} ${vx+78},${vy-16} ${vx+280},${vy+20} ${vx+300},${vy-100} ${vx+250},${vy-80}" fill="${t.field1}" stroke="#8a6810" stroke-width="1.2"/>
+  <polygon points="${vx+74},${vy-50} ${vx+78},${vy-16} ${vx+280},${vy+20} ${vx+300},${vy-100} ${vx+250},${vy-80}" fill="url(#mp-h4${charName})"/>
+  <line x1="${vx+252}" y1="${vy-82}" x2="${vx+75}" y2="${vy-50}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <line x1="${vx+282}" y1="${vy-40}" x2="${vx+77}" y2="${vy-30}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <text x="${vx+200}" y="${vy-30}" text-anchor="middle" font-family="'Cinzel',serif" font-size="14" font-weight="600" fill="#3a2008" opacity="0.65">5</text>
+</g>
+
+<!-- LOT 6 SE -->
+<g id="${svgId}-lot6" class="mz lot" data-char="${charName}" data-key="lot6" style="cursor:pointer">
+  <polygon points="${vx+78},${vy-16} ${vx+68},${vy+18} ${vx+260},${vy+160} ${vx+310},${vy+50} ${vx+280},${vy+20}" fill="${t.field2}" stroke="#8a6810" stroke-width="1.2"/>
+  <polygon points="${vx+78},${vy-16} ${vx+68},${vy+18} ${vx+260},${vy+160} ${vx+310},${vy+50} ${vx+280},${vy+20}" fill="url(#mp-h5${charName})"/>
+  <line x1="${vx+282}" y1="${vy+22}" x2="${vx+78}" y2="${vy-14}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <line x1="${vx+300}" y1="${vy+90}" x2="${vx+70}" y2="${vy+10}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <text x="${vx+210}" y="${vy+100}" text-anchor="middle" font-family="'Cinzel',serif" font-size="14" font-weight="600" fill="#3a2008" opacity="0.65">6</text>
+</g>
+
+<!-- LOT 7 SSE -->
+<g id="${svgId}-lot7" class="mz lot" data-char="${charName}" data-key="lot7" style="cursor:pointer">
+  <polygon points="${vx+68},${vy+18} ${vx+48},${vy+44} ${vx+18},${vy+60} ${vx+100},${vy+230} ${vx+220},${vy+200} ${vx+260},${vy+160}" fill="${t.field1}" stroke="#8a6810" stroke-width="1.2"/>
+  <polygon points="${vx+68},${vy+18} ${vx+48},${vy+44} ${vx+18},${vy+60} ${vx+100},${vy+230} ${vx+220},${vy+200} ${vx+260},${vy+160}" fill="url(#mp-h6${charName})"/>
+  <line x1="${vx+262}" y1="${vy+162}" x2="${vx+68}" y2="${vy+20}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <line x1="${vx+180}" y1="${vy+210}" x2="${vx+50}" y2="${vy+45}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <text x="${vx+168}" y="${vy+145}" text-anchor="middle" font-family="'Cinzel',serif" font-size="14" font-weight="600" fill="#3a2008" opacity="0.65">7</text>
+</g>
+
+<!-- LOT 8 S -->
+<g id="${svgId}-lot8" class="mz lot" data-char="${charName}" data-key="lot8" style="cursor:pointer">
+  <polygon points="${vx+18},${vy+60} ${vx-18},${vy+62} ${vx-48},${vy+52} ${vx-30},${vy+230} ${vx+100},${vy+260} ${vx+100},${vy+230}" fill="${t.field2}" stroke="#8a6810" stroke-width="1.2"/>
+  <polygon points="${vx+18},${vy+60} ${vx-18},${vy+62} ${vx-48},${vy+52} ${vx-30},${vy+230} ${vx+100},${vy+260} ${vx+100},${vy+230}" fill="url(#mp-h7${charName})"/>
+  <line x1="${vx-30}" y1="${vy+232}" x2="${vx+18}" y2="${vy+62}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <line x1="${vx+40}" y1="${vy+248}" x2="${vx-16}" y2="${vy+64}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <text x="${vx+30}" y="${vy+175}" text-anchor="middle" font-family="'Cinzel',serif" font-size="14" font-weight="600" fill="#3a2008" opacity="0.65">8</text>
+</g>
+
+<!-- LOT 9 SW -->
+<g id="${svgId}-lot9" class="mz lot" data-char="${charName}" data-key="lot9" style="cursor:pointer">
+  <polygon points="${vx-48},${vy+52} ${vx-72},${vy+32} ${vx-86},${vy+2} ${vx-220},${vy+100} ${vx-180},${vy+220} ${vx-30},${vy+230}" fill="${t.field1}" stroke="#8a6810" stroke-width="1.2"/>
+  <polygon points="${vx-48},${vy+52} ${vx-72},${vy+32} ${vx-86},${vy+2} ${vx-220},${vy+100} ${vx-180},${vy+220} ${vx-30},${vy+230}" fill="url(#mp-h8${charName})"/>
+  <line x1="${vx-222}" y1="${vy+102}" x2="${vx-72}" y2="${vy+32}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <line x1="${vx-190}" y1="${vy+180}" x2="${vx-58}" y2="${vy+50}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <text x="${vx-165}" y="${vy+145}" text-anchor="middle" font-family="'Cinzel',serif" font-size="14" font-weight="600" fill="#3a2008" opacity="0.65">9</text>
+</g>
+
+<!-- LOT 10 W -->
+<g id="${svgId}-lot10" class="mz lot" data-char="${charName}" data-key="lot10" style="cursor:pointer">
+  <polygon points="${vx-86},${vy+2} ${vx-84},${vy-32} ${vx-72},${vy-56} ${vx-65+vOff},${vy-72} ${vx-160},${vy-100} ${vx-220},${vy-80} ${vx-260},${vy+0} ${vx-220},${vy+100}" fill="${t.field2}" stroke="#8a6810" stroke-width="1.2"/>
+  <polygon points="${vx-86},${vy+2} ${vx-84},${vy-32} ${vx-72},${vy-56} ${vx-65+vOff},${vy-72} ${vx-160},${vy-100} ${vx-220},${vy-80} ${vx-260},${vy+0} ${vx-220},${vy+100}" fill="url(#mp-h9${charName})"/>
+  <line x1="${vx-262}" y1="${vy-2}" x2="${vx-83}" y2="${vy-30}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <line x1="${vx-225}" y1="${vy-82}" x2="${vx-73}" y2="${vy-54}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <text x="${vx-185}" y="${vy-30}" text-anchor="middle" font-family="'Cinzel',serif" font-size="14" font-weight="600" fill="#3a2008" opacity="0.65">10</text>
+</g>
+
+<!-- ── FALLOW PATCH ── -->
+<g id="${svgId}-fallow" class="mz" data-char="${charName}" data-key="fallow" style="cursor:pointer">
+  <polygon points="${vx-160},${vy-100} ${vx-100},${vy-180} ${vx-10},${vy-220} ${vx+20},${vy-240} ${vx+120},${vy-210} ${vx+280},${vy-200} ${vx+300},${vy-100} ${vx+250},${vy-80} ${vx+120},${vy-210} ${vx+20},${vy-240} ${vx-10},${vy-220} ${vx-180},${vy-230} 0,${vy-230} 0,0 ${W},0 ${W},${vy-200} ${vx+280},${vy-200}" fill="${t.fallow}" stroke="#8a7010" stroke-width="1"/>
+  <polygon points="${vx-160},${vy-100} ${vx-100},${vy-180} ${vx-10},${vy-220} ${vx+20},${vy-240} ${vx+120},${vy-210} ${vx+280},${vy-200} ${vx+300},${vy-100} ${vx+250},${vy-80} ${vx+120},${vy-210} ${vx+20},${vy-240} ${vx-10},${vy-220} ${vx-180},${vy-230} 0,${vy-230} 0,0 ${W},0 ${W},${vy-200} ${vx+280},${vy-200}" fill="url(#mp-fx${charName})"/>
+  <text x="${vx}" y="${vy-270}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#3a2808">Fallow</text>
+</g>
+
+<!-- ── PASTURE NE ── -->
+<g id="${svgId}-pasture" class="mz" data-char="${charName}" data-key="pasture" style="cursor:pointer">
+  <polygon points="${vx+280},${vy-200} ${W},${vy-200} ${W},${vy+200} ${vx+310},${vy+50} ${vx+300},${vy-100}" fill="${t.pasture}" stroke="#4a7828" stroke-width="1"/>
+  <polygon points="${vx+280},${vy-200} ${W},${vy-200} ${W},${vy+200} ${vx+310},${vy+50} ${vx+300},${vy-100}" fill="url(#mp-pd${charName})"/>
+  <g fill="#e8e0c0" stroke="#706850" stroke-width="0.5">
+    <ellipse cx="${vx+360}" cy="${vy-100}" rx="9" ry="6"/><ellipse cx="${vx+400}" cy="${vy-80}" rx="9" ry="6"/>
+    <ellipse cx="${vx+380}" cy="${vy-50}" rx="9" ry="6"/><ellipse cx="${vx+420}" cy="${vy-20}" rx="9" ry="6"/>
+    <ellipse cx="${vx+350}" cy="${vy+10}" rx="9" ry="6"/>
+  </g>
+  <text x="${vx+390}" y="${vy-115}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#2a4818">Common</text>
+  <text x="${vx+390}" y="${vy-102}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#2a4818">Pasture</text>
+</g>
+
+<!-- ── WOODLAND SE ── -->
+<g id="${svgId}-woodland" class="mz" data-char="${charName}" data-key="woodland" style="cursor:pointer">
+  <polygon points="${vx+310},${vy+50} ${W},${vy+200} ${W},${H} ${vx+220},${H} ${vx+100},${vy+260} ${vx+220},${vy+200} ${vx+260},${vy+160}" fill="${t.woodland}" stroke="#2e5818" stroke-width="1"/>
+  <polygon points="${vx+310},${vy+50} ${W},${vy+200} ${W},${H} ${vx+220},${H} ${vx+100},${vy+260} ${vx+220},${vy+200} ${vx+260},${vy+160}" fill="url(#mp-wd${charName})"/>
+  <g fill="#2a5010" opacity="0.6">
+    <ellipse cx="${vx+340}" cy="${vy+100}" rx="14" ry="17"/><ellipse cx="${vx+380}" cy="${vy+130}" rx="13" ry="16"/>
+    <ellipse cx="${vx+360}" cy="${vy+165}" rx="14" ry="17"/><ellipse cx="${vx+400}" cy="${vy+190}" rx="13" ry="16"/>
+    <ellipse cx="${vx+340}" cy="${vy+210}" rx="14" ry="17"/><ellipse cx="${vx+380}" cy="${vy+240}" rx="13" ry="16"/>
+  </g>
+  <text x="${vx+370}" y="${vy+185}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#0e2806">Lord's Wood</text>
+</g>
+
+<!-- ── MEADOW S ── -->
+<g id="${svgId}-meadow" class="mz" data-char="${charName}" data-key="meadow" style="cursor:pointer">
+  <polygon points="${vx-180},${vy+220} ${vx-30},${vy+230} ${vx+100},${vy+260} ${vx+220},${H} 0,${H}" fill="${t.meadow}" stroke="#3a6820" stroke-width="1"/>
+  <polygon points="${vx-180},${vy+220} ${vx-30},${vy+230} ${vx+100},${vy+260} ${vx+220},${H} 0,${H}" fill="url(#mp-pd${charName})" opacity="0.7"/>
+  <text x="${vx-40}" y="${vy+310}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="12" fill="#1e3a10">The Meadow</text>
+</g>
+
+<!-- ── WASTE SW/W ── -->
+<g id="${svgId}-waste" class="mz" data-char="${charName}" data-key="waste" style="cursor:pointer">
+  <polygon points="0,${vy-230} 0,0 ${vx-180},0 ${vx-180},${vy-230}" fill="${t.waste}" stroke="#686828" stroke-width="1"/>
+  <polygon points="0,${vy+390} 0,${vy-230} ${vx-180},${vy-230} ${vx-260},${vy+0} ${vx-220},${vy+100} ${vx-180},${vy+220} 0,${H}" fill="${t.waste}" stroke="#686828" stroke-width="1"/>
+  <text x="${vx-310}" y="${vy+50}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#484818">Waste</text>
+</g>
+
+<!-- ── ROADS ── -->
+${roadSvg(cfg.roads)}
+
+<!-- ── RIVER ── -->
+<!-- River shadow -->
+<path d="${rp.path}" fill="none" stroke="${cfg.river.color}" stroke-width="${cfg.river.width+3}" opacity="0.2" stroke-linecap="round"/>
+<!-- River main -->
+<path d="${rp.path}" fill="none" stroke="${cfg.river.color}" stroke-width="${cfg.river.width}" opacity="0.75" stroke-linecap="round"/>
+<!-- River highlight -->
+<path d="${rp.path}" fill="none" stroke="#a8d0f0" stroke-width="${Math.max(1,cfg.river.width-2)}" opacity="0.3" stroke-linecap="round" stroke-dasharray="20,15"/>
+<!-- River label -->
+<text font-family="'IM Fell English',serif" font-style="italic" font-size="10" fill="${cfg.river.color}" opacity="0.9">
+  <textPath href="#${svgId}-riverpath" startOffset="30%">${cfg.river.name}</textPath>
+</text>
+<path id="${svgId}-riverpath" d="${rp.path}" fill="none" stroke="none"/>
+
+<!-- ── MILL POND + STREAM ── -->
+<g id="${svgId}-mill" class="mz" data-char="${charName}" data-key="mill" style="cursor:pointer">
+  <ellipse cx="${millX}" cy="${millY}" rx="32" ry="22" fill="#6898b8" stroke="#285878" stroke-width="0.9" opacity="0.85"/>
+  <ellipse cx="${millX}" cy="${millY}" rx="20" ry="12" fill="none" stroke="#4878a0" stroke-width="0.5" opacity="0.5"/>
+  <rect x="${millX-30}" y="${millY-20}" width="20" height="20" rx="1" fill="#9a8060" stroke="#5a3e20" stroke-width="0.9"/>
+  <circle cx="${millX-20}" cy="${millY+4}" r="8" fill="none" stroke="#3a2010" stroke-width="1.2"/>
+  <line x1="${millX-20}" y1="${millY-4}" x2="${millX-20}" y2="${millY+12}" stroke="#3a2010" stroke-width="0.8"/>
+  <line x1="${millX-28}" y1="${millY+4}" x2="${millX-12}" y2="${millY+4}" stroke="#3a2010" stroke-width="0.8"/>
+  <text x="${millX}" y="${millY+36}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9.5" fill="#2a1206">Mill &amp; Pond</text>
+</g>
+<!-- Stream to river -->
+<path d="${streamPath}" fill="none" stroke="${cfg.river.color}" stroke-width="2" opacity="0.45" stroke-linecap="round"/>
+
+<!-- ── VILLAGE ── -->
+<g id="${svgId}-village" class="mz" data-char="${charName}" data-key="village" style="cursor:pointer">
+  <polygon points="${vPoly}" fill="${t.village}" stroke="#7a5010" stroke-width="1.5"/>
+  <ellipse cx="${vx}" cy="${vy+5}" rx="28" ry="22" fill="${t.field2}" opacity="0.4"/>
+  <!-- houses — 20 buildings in organic clusters -->
+  <g fill="#6a3e10" stroke="#3a1e06" stroke-width="0.6">
+    <rect x="${vx-56}" y="${vy-68}" width="12" height="10" rx="1"/><polygon points="${vx-56},${vy-68} ${vx-44},${vy-68} ${vx-50},${vy-77}" fill="#4a2a08"/>
+    <rect x="${vx-40}" y="${vy-74}" width="12" height="10" rx="1"/><polygon points="${vx-40},${vy-74} ${vx-28},${vy-74} ${vx-34},${vy-83}" fill="#4a2a08"/>
+    <rect x="${vx-22}" y="${vy-78}" width="12" height="10" rx="1"/><polygon points="${vx-22},${vy-78} ${vx-10},${vy-78} ${vx-16},${vy-87}" fill="#4a2a08"/>
+    <rect x="${vx-4}" y="${vy-78}" width="12" height="10" rx="1"/><polygon points="${vx-4},${vy-78} ${vx+8},${vy-78} ${vx+2},${vy-87}" fill="#4a2a08"/>
+    <rect x="${vx+14}" y="${vy-76}" width="12" height="10" rx="1"/><polygon points="${vx+14},${vy-76} ${vx+26},${vy-76} ${vx+20},${vy-85}" fill="#4a2a08"/>
+    <rect x="${vx+30}" y="${vy-70}" width="12" height="10" rx="1"/><polygon points="${vx+30},${vy-70} ${vx+42},${vy-70} ${vx+36},${vy-79}" fill="#4a2a08"/>
+    <rect x="${vx-60}" y="${vy-54}" width="12" height="10" rx="1"/><polygon points="${vx-60},${vy-54} ${vx-48},${vy-54} ${vx-54},${vy-63}" fill="#4a2a08"/>
+    <rect x="${vx+46}" y="${vy-56}" width="12" height="10" rx="1"/><polygon points="${vx+46},${vy-56} ${vx+58},${vy-56} ${vx+52},${vy-65}" fill="#4a2a08"/>
+    <rect x="${vx-66}" y="${vy-36}" width="12" height="10" rx="1"/><polygon points="${vx-66},${vy-36} ${vx-54},${vy-36} ${vx-60},${vy-45}" fill="#4a2a08"/>
+    <rect x="${vx+56}" y="${vy-34}" width="12" height="10" rx="1"/><polygon points="${vx+56},${vy-34} ${vx+68},${vy-34} ${vx+62},${vy-43}" fill="#4a2a08"/>
+    <rect x="${vx-68}" y="${vy-14}" width="12" height="10" rx="1"/><polygon points="${vx-68},${vy-14} ${vx-56},${vy-14} ${vx-62},${vy-23}" fill="#4a2a08"/>
+    <rect x="${vx+60}" y="${vy-12}" width="12" height="10" rx="1"/><polygon points="${vx+60},${vy-12} ${vx+72},${vy-12} ${vx+66},${vy-21}" fill="#4a2a08"/>
+    <rect x="${vx-68}" y="${vy+6}" width="12" height="10" rx="1"/><polygon points="${vx-68},${vy+6} ${vx-56},${vy+6} ${vx-62},${vy-3}" fill="#4a2a08"/>
+    <rect x="${vx+60}" y="${vy+8}" width="12" height="10" rx="1"/><polygon points="${vx+60},${vy+8} ${vx+72},${vy+8} ${vx+66},${vy-1}" fill="#4a2a08"/>
+    <rect x="${vx-62}" y="${vy+24}" width="12" height="10" rx="1"/><polygon points="${vx-62},${vy+24} ${vx-50},${vy+24} ${vx-56},${vy+15}" fill="#4a2a08"/>
+    <rect x="${vx+50}" y="${vy+26}" width="12" height="10" rx="1"/><polygon points="${vx+50},${vy+26} ${vx+62},${vy+26} ${vx+56},${vy+17}" fill="#4a2a08"/>
+    <rect x="${vx-50}" y="${vy+40}" width="12" height="10" rx="1"/><polygon points="${vx-50},${vy+40} ${vx-38},${vy+40} ${vx-44},${vy+31}" fill="#4a2a08"/>
+    <rect x="${vx-30}" y="${vy+50}" width="12" height="10" rx="1"/><polygon points="${vx-30},${vy+50} ${vx-18},${vy+50} ${vx-24},${vy+41}" fill="#4a2a08"/>
+    <rect x="${vx-8}" y="${vy+52}" width="12" height="10" rx="1"/><polygon points="${vx-8},${vy+52} ${vx+4},${vy+52} ${vx-2},${vy+43}" fill="#4a2a08"/>
+    <rect x="${vx+14}" y="${vy+50}" width="12" height="10" rx="1"/><polygon points="${vx+14},${vy+50} ${vx+26},${vy+50} ${vx+20},${vy+41}" fill="#4a2a08"/>
+  </g>
+  <text x="${vx}" y="${vy+82}" text-anchor="middle" font-family="'Cinzel',serif" font-size="11.5" fill="#1e0e04" letter-spacing="0.04em">The Village</text>
+</g>
+
+<!-- ── CHURCH (E edge of village) ── -->
+<g id="${svgId}-church" class="mz" data-char="${charName}" data-key="church" style="cursor:pointer">
+  <rect x="${vx+84}" y="${vy-30}" width="26" height="30" rx="1" fill="#9a8060" stroke="#5a3e20" stroke-width="0.9"/>
+  <rect x="${vx+92}" y="${vy-44}" width="10" height="17" fill="#7a6040" stroke="#4a3018" stroke-width="0.7"/>
+  <polygon points="${vx+97},${vy-55} ${vx+90},${vy-45} ${vx+104},${vy-45}" fill="#4a3010"/>
+  <line x1="${vx+97}" y1="${vy-56}" x2="${vx+97}" y2="${vy-46}" stroke="#e0d0a0" stroke-width="0.8"/>
+  <line x1="${vx+93}" y1="${vy-51}" x2="${vx+101}" y2="${vy-51}" stroke="#e0d0a0" stroke-width="0.8"/>
+  <text x="${vx+97}" y="${vy+14}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9.5" fill="#2a1206">Church</text>
+</g>
+
+<!-- ── THE HALL ── -->
+<g id="${svgId}-hall" class="mz" data-char="${charName}" data-key="hall" style="cursor:pointer">
+  <rect x="${hallX-10}" y="${hallY-10}" width="96" height="76" rx="3" fill="${t.field1}" fill-opacity="0.18" stroke="#8a7018" stroke-width="1" stroke-dasharray="5,3"/>
+  <rect x="${hallX+2}" y="${hallY}" width="58" height="42" rx="2" fill="#522408" stroke="#320e04" stroke-width="1.5"/>
+  <rect x="${hallX+6}" y="${hallY-5}" width="50" height="9" rx="1" fill="#622e0e"/>
+  <rect x="${hallX+44}" y="${hallY-15}" width="16" height="24" rx="1" fill="#421e06"/>
+  <polygon points="${hallX+44},${hallY-15} ${hallX+60},${hallY-15} ${hallX+52},${hallY-24}" fill="#320e04"/>
+  <rect x="${hallX+20}" y="${hallY+26}" width="14" height="18" rx="1" fill="#220a04"/>
+  <rect x="${hallX+4}" y="${hallY+46}" width="32" height="18" rx="1" fill="#705010" stroke="#4a3008" stroke-width="0.7"/>
+  <polygon points="${hallX+4},${hallY+46} ${hallX+36},${hallY+46} ${hallX+20},${hallY+36}" fill="#604010"/>
+  ${bonusMarker}
+  ${improvSymbols}
+  <text x="${hallX+38}" y="${hallY+78}" text-anchor="middle" font-family="'Cinzel',serif" font-size="10" fill="#1a0a04" letter-spacing="0.04em">The Hall</text>
+</g>
+
+<!-- ── TITLE ── -->
+<rect x="${W/2-160}" y="18" width="320" height="28" rx="2" fill="#1a1209" fill-opacity="0.86"/>
+<text x="${W/2}" y="38" text-anchor="middle" font-family="'Cinzel',serif" font-size="13.5" fill="#d4aa45" letter-spacing="0.12em">MANOR OF ${cfg.manorName.toUpperCase()}</text>
+
+<!-- ── LEGEND ── -->
+<rect x="16" y="${H-130}" width="198" height="118" rx="2" fill="#f0e4c8" fill-opacity="0.92" stroke="#9a7a3a" stroke-width="0.8"/>
+<text x="115" y="${H-114}" text-anchor="middle" font-family="'Cinzel',serif" font-size="9" fill="#3a1a06" letter-spacing="0.1em">LEGEND</text>
+<g font-family="'Crimson Pro',serif" font-size="8.5" fill="#3a1a06">
+  <rect x="24" y="${H-108}" width="11" height="8" fill="${t.field1}" stroke="#8a6810" stroke-width="0.5"/><text x="40" y="${H-100}">Field lots (1–10)</text>
+  <rect x="118" y="${H-108}" width="11" height="8" fill="${t.fallow}" stroke="#8a7010" stroke-width="0.5"/><text x="134" y="${H-100}">Fallow</text>
+  <rect x="24" y="${H-94}" width="11" height="8" fill="${t.pasture}" stroke="#4a7828" stroke-width="0.5"/><text x="40" y="${H-86}">Pasture</text>
+  <rect x="118" y="${H-94}" width="11" height="8" fill="${t.woodland}" stroke="#2e5818" stroke-width="0.5"/><text x="134" y="${H-86}">Woodland</text>
+  <rect x="24" y="${H-80}" width="11" height="8" fill="${cfg.river.color}" stroke="#285878" stroke-width="0.5"/><text x="40" y="${H-72}">Water</text>
+  <rect x="118" y="${H-80}" width="11" height="8" fill="${t.meadow}" stroke="#3a6820" stroke-width="0.5"/><text x="134" y="${H-72}">Meadow</text>
+  <rect x="24" y="${H-66}" width="11" height="8" fill="#522408" stroke="#320e04" stroke-width="0.5"/><text x="40" y="${H-58}">Hall</text>
+  <rect x="118" y="${H-66}" width="11" height="8" fill="#6a3e10" stroke="#3a1e06" stroke-width="0.5"/><text x="134" y="${H-58}">Village</text>
+  <line x1="24" y1="${H-50}" x2="35" y2="${H-50}" stroke="${t.road}" stroke-width="2.5" opacity="0.55"/><text x="40" y="${H-46}">Good road</text>
+  <line x1="118" y1="${H-50}" x2="129" y2="${H-50}" stroke="${t.road}" stroke-width="2" stroke-dasharray="4,3" opacity="0.55"/><text x="134" y="${H-46}">Poor track</text>
+  <text x="115" y="${H-24}" text-anchor="middle" font-style="italic" fill="#5a3010" font-size="8">Click field lots to mark as raided</text>
+</g>
+
+<!-- ── COMPASS ── -->
+<g transform="translate(${W-50},${H-55})">
+  <line x1="0" y1="0" x2="0" y2="-22" stroke="#6a4820" stroke-width="1.4" stroke-linecap="round"/>
+  <line x1="0" y1="0" x2="0" y2="13" stroke="#6a4820" stroke-width="0.8" opacity="0.5"/>
+  <line x1="-13" y1="0" x2="13" y2="0" stroke="#6a4820" stroke-width="0.8" opacity="0.5"/>
+  <polygon points="0,-26 -5,-15 5,-15" fill="#6a4820"/>
+  <text x="0" y="-29" text-anchor="middle" font-family="'Cinzel',serif" font-size="9" fill="#4a3010">N</text>
+</g>
+
+</svg>
+</div>
+
+<!-- Raid status bar -->
+<div id="rsbar-${charName}" style="background:#1a1209;padding:.45rem 1.1rem;display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;min-height:2rem">
+  <span style="font-family:'Cinzel',serif;font-size:.6rem;letter-spacing:.12em;text-transform:uppercase;color:#b8902a">Raided lots:</span>
+  <span id="rsval-${charName}" style="font-family:'Crimson Pro',serif;font-size:.8rem;color:#c9a86a;font-style:italic">none</span>
+  <button id="rsclear-${charName}" onclick="manorClearRaids('${charName}')" style="font-family:'Cinzel',serif;font-size:.58rem;letter-spacing:.1em;text-transform:uppercase;background:#8b1a1a;color:#f0d0d0;border:1px solid #a02020;border-radius:2px;padding:.25rem .6rem;cursor:pointer;margin-left:auto;display:none">Clear Raids</button>
+</div>
+<div id="rslog-${charName}" style="background:#1a0808;border-top:1px solid rgba(139,26,26,.25);padding:.35rem 1.1rem;font-family:'Crimson Pro',serif;font-size:.78rem;color:#e08080;font-style:italic;display:none;min-height:1.5rem"></div>
+`;
+}
+
+// ── MANOR MAP ZONE DATA (tooltips) ────────────────────────────────────────
+const MANOR_ZONE_DATA = {
+  lot1:    {name:"Lot 1 — North-West Field",   text:"Arable strips in the NW quarter. Wheat and oats on good loam.", raidable:true},
+  lot2:    {name:"Lot 2 — North Field",         text:"Strips climbing the northern rise. Barley and winter wheat. Hard ploughing.", raidable:true},
+  lot3:    {name:"Lot 3 — North-Centre Field",  text:"Wide arable swathe north of the village. The largest productive lot.", raidable:true},
+  lot4:    {name:"Lot 4 — North-East Field",    text:"Strips running toward the pasture edge. Good soil near the stream.", raidable:true},
+  lot5:    {name:"Lot 5 — East Field",          text:"Low-lying strips east of the village. Barley and oats.", raidable:true},
+  lot6:    {name:"Lot 6 — South-East Field",    text:"Strips running into the woodland edge. Decent barley ground.", raidable:true},
+  lot7:    {name:"Lot 7 — South Field (East)",  text:"Low strips toward the meadow. Rye and barley. Often partially fallow.", raidable:true},
+  lot8:    {name:"Lot 8 — South Field (West)",  text:"Wide southern strips near the meadow. Oats and wheat.", raidable:true},
+  lot9:    {name:"Lot 9 — South-West Field",    text:"Strips climbing toward the waste. Mixed grain on thin soil.", raidable:true},
+  lot10:   {name:"Lot 10 — West Field",         text:"Long strips along the western edge. Good autumn wheat.", raidable:true},
+  fallow:  {name:"Fallow Ground",               text:"Left unplanted this season. Grazed to manure for next year's planting.", raidable:false},
+  pasture: {name:"Common Pasture",              text:"Shared grazing. ~20 sheep, horses and cattle. Open to villagers.", raidable:false},
+  woodland:{name:"Lord's Wood",                 text:"Timber, firewood and foraging. Pigs fattened on autumn acorns. Only the lord may hunt.", raidable:false},
+  meadow:  {name:"The Meadow",                  text:"Cut for hay in summer. Divided in meadow-lots between lord and village.", raidable:false},
+  waste:   {name:"Waste & Scrubland",           text:"Rough uncultivated ground. Wood and grazing for peasants. Knight may hunt freely.", raidable:false},
+  mill:    {name:"Mill & Millpond",             text:"Lord-owned mill. Commoners pay toll to grind here. Bakery oven nearby.", raidable:false},
+  village: {name:"The Village (~100 households)",text:"Croft-and-toft huts, byres and granaries. Church is the largest building.", raidable:false},
+  church:  {name:"The Church",                  text:"Small, wooden. A porter tends it while the priest circuits several parishes.", raidable:false},
+  hall:    {name:"The Hall & Lord's Close",     text:"The knight's fine house. Great hall for feasts and court. Barn and stables within the close.", raidable:false},
+};
+
+// ── MANOR MAP INTERACTION ─────────────────────────────────────────────────
+const manorRaided = {}; // { charName: Set of lot keys }
+
+function initManorMap(charName) {
+  if (!manorRaided[charName]) manorRaided[charName] = new Set();
+  const svgId = 'msv_' + charName;
+  const svg = document.getElementById(svgId);
+  if (!svg) return;
+
+  // Remove stale tip if any
+  let tip = document.getElementById('mtip');
+  if (!tip) {
+    tip = document.createElement('div');
+    tip.id = 'mtip';
+    tip.style.cssText = 'position:fixed;background:#16100a;color:#f0e4c8;border:1px solid #b8902a;border-radius:3px;padding:.5rem .85rem;font-family:Crimson Pro,serif;font-size:.82rem;line-height:1.5;pointer-events:none;opacity:0;transition:opacity .12s;max-width:240px;z-index:9999;';
+    document.body.appendChild(tip);
+  }
+
+  svg.querySelectorAll('.mz').forEach(z => {
+    const key = z.dataset.key;
+    const ch  = z.dataset.char;
+    const d   = MANOR_ZONE_DATA[key];
+    if (!d) return;
+
+    z.addEventListener('mouseenter', e => {
+      const raided = manorRaided[ch] && manorRaided[ch].has(key);
+      let extra = d.raidable ? (raided
+        ? '<div style="margin-top:.35rem;font-size:.76rem;color:#e08080;font-style:italic;border-top:1px solid rgba(139,26,26,.35);padding-top:.3rem">⚔ Raided — harvest lost. Click to restore.</div>'
+        : '<div style="margin-top:.35rem;font-size:.76rem;color:#e08080;font-style:italic;border-top:1px solid rgba(139,26,26,.35);padding-top:.3rem">Click to mark as raided</div>') : '';
+      tip.innerHTML = `<b style="font-family:'Cinzel',serif;font-size:.67rem;letter-spacing:.07em;color:#d4aa45;display:block;margin-bottom:.2rem;text-transform:uppercase">${d.name}</b>${d.text}${extra}`;
+      tip.style.opacity = '1';
+      manorPositTip(e);
+      manorHilite(z, key, ch, true);
+    });
+    z.addEventListener('mousemove', manorPositTip);
+    z.addEventListener('mouseleave', () => {
+      tip.style.opacity = '0';
+      manorHilite(z, key, ch, false);
+    });
+    if (d.raidable) z.addEventListener('click', () => manorToggleRaid(z, key, ch, d.name));
+  });
+}
+
+function manorHilite(z, key, ch, on) {
+  const s = z.querySelector('polygon,rect,ellipse,path');
+  if (!s) return;
+  const isRaided = manorRaided[ch] && manorRaided[ch].has(key);
+  if (on) {
+    s._os = s.getAttribute('stroke'); s._ow = s.getAttribute('stroke-width');
+    s.setAttribute('stroke', isRaided ? '#ff5555' : '#b8902a');
+    s.setAttribute('stroke-width', '2.5');
+  } else {
+    if (s._os !== undefined) {
+      s.setAttribute('stroke', isRaided ? '#8b1a1a' : s._os);
+      s.setAttribute('stroke-width', isRaided ? '2' : (s._ow||'1.2'));
+    }
+  }
+}
+
+function manorToggleRaid(z, key, ch, name) {
+  if (!manorRaided[ch]) manorRaided[ch] = new Set();
+  const set = manorRaided[ch];
+  if (set.has(key)) {
+    set.delete(key);
+    const ov = z.querySelector('.mro'); if (ov) ov.remove();
+    manorLog(ch, `${name} — raid mark cleared.`);
+  } else {
+    set.add(key);
+    const base = z.querySelector('polygon,rect,ellipse');
+    if (base) {
+      const cl = base.cloneNode(false);
+      cl.setAttribute('fill','rgba(139,26,26,0.32)');
+      cl.setAttribute('stroke','#8b1a1a');
+      cl.setAttribute('stroke-width','2');
+      cl.setAttribute('stroke-dasharray','7,3');
+      cl.classList.add('mro');
+      cl.style.pointerEvents='none';
+      z.appendChild(cl);
+    }
+    manorLog(ch, `⚔ ${name} has been raided! Harvest lost this season.`);
+  }
+  manorUpdateStatus(ch);
+}
+
+function manorLog(ch, msg) {
+  const el = document.getElementById('rslog-'+ch);
+  if (el) { el.textContent=msg; el.style.display='block'; }
+}
+
+function manorUpdateStatus(ch) {
+  const set = manorRaided[ch] || new Set();
+  const val = document.getElementById('rsval-'+ch);
+  const btn = document.getElementById('rsclear-'+ch);
+  if (val) val.textContent = set.size ? [...set].map(k=>k.replace('lot','Lot ')).join(', ') : 'none';
+  if (btn) btn.style.display = set.size ? 'inline-block' : 'none';
+}
+
+function manorClearRaids(ch) {
+  const set = manorRaided[ch] || new Set();
+  const svgId = 'msv_' + ch;
+  const svg = document.getElementById(svgId);
+  if (svg) svg.querySelectorAll('.mro').forEach(el=>el.remove());
+  set.clear();
+  manorUpdateStatus(ch);
+  manorLog(ch, 'All raid marks cleared.');
+}
+
+function manorPositTip(e) {
+  const tip = document.getElementById('mtip');
+  if (!tip) return;
+  let x = e.clientX + 16, y = e.clientY + 16;
+  if (x + 250 > window.innerWidth)  x = e.clientX - 256;
+  if (y + 150 > window.innerHeight) y = e.clientY - 150;
+  tip.style.left = x+'px'; tip.style.top = y+'px';
+}
 
 function renderEstatesTopLevel(){
   const panel = document.getElementById('mainPanel');
@@ -2798,15 +3380,24 @@ function renderEstatesTopLevel(){
 
   const tabs = chars.map(c => `<button onclick="activeFamilyTab='${c}';renderEstatesTopLevel()" style="font-family:'Cinzel',serif;font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;padding:.5rem 1.2rem;border:none;cursor:pointer;transition:all .2s;border-bottom:2px solid ${activeFamilyTab===c?'var(--gold)':'transparent'};background:${activeFamilyTab===c?'#2a1a06':'transparent'};color:${activeFamilyTab===c?'#f0cc60':'#b89a6a'}">${c}</button>`).join('');
 
+  const subTabStyle = (k) => `font-family:'Cinzel',serif;font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;padding:.38rem .9rem;border:none;cursor:pointer;transition:all .2s;background:${estateSubTab===k?'rgba(184,144,42,.15)':'transparent'};color:${estateSubTab===k?'#d4aa45':'#8a7040'};border-bottom:2px solid ${estateSubTab===k?'var(--gold)':'transparent'}`;
+
+  const mapContent   = estateSubTab==='map'         ? `<div style="padding:0">${renderManorMapSVG(activeFamilyTab)}</div>` : '';
+  const bookContent  = estateSubTab==='bookkeeping' ? `<div style="padding:1.2rem 1.4rem">${renderEstatesPanel(activeFamilyTab)}</div>` : '';
+
   panel.innerHTML = `
     <div style="background:var(--parchment);border:1px solid var(--parchment-shadow);border-radius:4px;box-shadow:4px 4px 0 rgba(0,0,0,.4);overflow:hidden;animation:unfurl .3s ease">
-      <div style="background:var(--ink);padding:.6rem 1.2rem;display:flex;gap:0;border-bottom:1px solid var(--gold)">
-        ${tabs}
+      <div style="background:var(--ink);padding:.5rem 1.2rem .0rem;display:flex;align-items:flex-end;justify-content:space-between;border-bottom:1px solid var(--gold);flex-wrap:wrap;gap:.3rem">
+        <div style="display:flex;gap:0">${tabs}</div>
+        <div style="display:flex;gap:0;padding-bottom:0">
+          <button onclick="estateSubTab='map';renderEstatesTopLevel();setTimeout(()=>initManorMap('${activeFamilyTab}'),60)" style="${subTabStyle('map')}">🗺 Map</button>
+          <button onclick="estateSubTab='bookkeeping';renderEstatesTopLevel()" style="${subTabStyle('bookkeeping')}">📋 Bookkeeping</button>
+        </div>
       </div>
-      <div style="padding:1.2rem 1.4rem">
-        ${renderEstatesPanel(activeFamilyTab)}
-      </div>
+      ${mapContent}${bookContent}
     </div>`;
+
+  if (estateSubTab==='map') setTimeout(()=>initManorMap(activeFamilyTab), 60);
 }
 
 function renderEstatesPanel(charName) {
