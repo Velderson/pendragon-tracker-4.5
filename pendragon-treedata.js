@@ -53,6 +53,7 @@ const TREE_DATA = {
           "id": "rhy_mother",
           "label": "Eithne",
           "status": "dead",
+          "ghost": true,
           "parentId": "gp_mat",
           "ismother": true
         },
@@ -60,8 +61,7 @@ const TREE_DATA = {
           "id": "uwain",
           "label": "Iorwerth",
           "role": "Father · Knight",
-          "status": "dead",
-          "parentId": "gp_pat",
+          "status": "unknown",
           "isfather": true,
           "note": "Whereabouts unknown"
         },
@@ -275,66 +275,71 @@ const TREE_DATA = {
     "generations": [
       [
         {
-          "id": "great_unc_pat",
-          "label": "Maelgwn",
-          "role": "Great-Uncle · Knight",
-          "status": "alive",
-          "age": "82",
-          "glory": "8420"
+          "id": "gp_mat",
+          "label": "Maternal\nGrandparents",
+          "status": "dead",
+          "ghost": true
         },
         {
           "id": "gp_pat",
           "label": "Paternal\nGrandparents",
           "status": "dead",
           "ghost": true
-        },
-        {
-          "id": "gp_mat",
-          "label": "Maternal\nGrandparents",
-          "status": "dead",
-          "ghost": true
         }
       ],
       [
+        {
+          "id": "great_unc_pat",
+          "label": "Maelgwn",
+          "role": "Great-Uncle · Knight",
+          "status": "alive",
+          "age": "55+",
+          "glory": "8420",
+          "parentId": "gp_pat"
+        },
         {
           "id": "unc_a",
           "label": "Glewlwyd",
           "role": "Paternal Uncle",
           "status": "alive",
-          "age": "52",
-          "parentId": "gp_pat"
+          "age": "45+",
+          "note": "Illegit.",
+          "parentId": "great_unc_pat"
         },
         {
           "id": "unc_b",
           "label": "Glinneu",
           "role": "Paternal Uncle",
           "status": "alive",
-          "age": "51",
-          "parentId": "gp_pat"
+          "age": "45+",
+          "note": "Illegit.",
+          "parentId": "great_unc_pat"
         },
         {
           "id": "unc_c",
           "label": "Gwallawg",
           "role": "Paternal Uncle",
           "status": "alive",
-          "age": "50",
-          "parentId": "gp_pat"
+          "age": "45+",
+          "note": "Illegit.",
+          "parentId": "great_unc_pat"
         },
         {
           "id": "unc_d",
           "label": "Gwenddoleu",
           "role": "Paternal Uncle",
           "status": "alive",
-          "age": "49",
-          "parentId": "gp_pat"
+          "age": "45+",
+          "note": "Illegit.",
+          "parentId": "great_unc_pat"
         },
         {
           "id": "aunt_e",
           "label": "Arddun",
           "role": "Paternal Aunt",
           "status": "alive",
-          "age": "49",
-          "parentId": "gp_pat"
+          "age": "45+",
+          "parentId": "great_unc_pat"
         },
         {
           "id": "gwe_father",
@@ -351,7 +356,6 @@ const TREE_DATA = {
           "role": "Mother",
           "status": "alive",
           "age": "43",
-          "parentId": "gp_mat",
           "ismother": true
         },
         {
@@ -359,7 +363,6 @@ const TREE_DATA = {
           "label": "Cyngar",
           "role": "Maternal Uncle · Knight",
           "status": "alive",
-          "age": "47",
           "parentId": "gp_mat"
         },
         {
@@ -367,14 +370,13 @@ const TREE_DATA = {
           "label": "Gwrfoddw",
           "role": "Maternal Uncle",
           "status": "alive",
-          "age": "45",
           "parentId": "gp_mat"
         },
         {
           "id": "unc_g",
           "label": "Gwriad",
           "role": "Maternal Uncle",
-          "status": "dead",
+          "status": "alive",
           "parentId": "gp_mat"
         },
         {
@@ -389,7 +391,7 @@ const TREE_DATA = {
           "id": "aunt_i",
           "label": "Ellylw",
           "role": "Maternal Aunt",
-          "status": "dead",
+          "status": "alive",
           "parentId": "gp_mat"
         },
         {
@@ -695,39 +697,26 @@ const TREE_DATA = {
     "generations": [
       [
         {
-          "id": "gp_pat_f",
-          "label": "Macsen",
-          "role": "Paternal Grandfather",
-          "status": "dead"
-        },
-        {
-          "id": "gp_pat_m",
-          "label": "Rhoswen",
-          "role": "Paternal Grandmother",
+          "id": "gp_pat",
+          "label": "Macsen & Rhoswen",
           "status": "dead",
-          "spouseOf": "gp_pat_f"
+          "ghost": true
         },
         {
-          "id": "gp_mat_f",
-          "label": "Madawg",
-          "role": "Maternal Grandfather",
-          "status": "dead"
-        },
-        {
-          "id": "gp_mat_m",
-          "label": "Siwan",
-          "role": "Maternal Grandmother",
+          "id": "gp_mat",
+          "label": "Madawg & Siwan",
           "status": "dead",
-          "spouseOf": "gp_mat_f"
+          "ghost": true
         }
       ],
       [
         {
           "id": "tim_father",
           "label": "Crautreic",
-          "role": "Father · Knight",
+          "role": "Father · Knight (dead)",
           "status": "dead",
-          "parentId": "gp_pat_f",
+          "ghost": true,
+          "parentId": "gp_pat",
           "isfather": true
         },
         {
@@ -737,7 +726,7 @@ const TREE_DATA = {
           "status": "alive",
           "age": "44",
           "glory": "1420",
-          "parentId": "gp_pat_f"
+          "parentId": "gp_pat"
         },
         {
           "id": "tim_mother",
@@ -746,7 +735,7 @@ const TREE_DATA = {
           "status": "alive",
           "age": "40",
           "note": "Eligible",
-          "parentId": "gp_mat_f",
+          "parentId": "gp_mat",
           "ismother": true
         },
         {
@@ -756,7 +745,7 @@ const TREE_DATA = {
           "status": "alive",
           "age": "34",
           "glory": "1222",
-          "parentId": "gp_mat_f"
+          "parentId": "gp_mat"
         },
         {
           "id": "unc_owain",
@@ -765,7 +754,7 @@ const TREE_DATA = {
           "status": "alive",
           "age": "31",
           "glory": "1120",
-          "parentId": "gp_mat_f"
+          "parentId": "gp_mat"
         },
         {
           "id": "aunt_tryamour",
@@ -774,7 +763,7 @@ const TREE_DATA = {
           "status": "alive",
           "age": "29",
           "note": "Widow, flirting",
-          "parentId": "gp_mat_f"
+          "parentId": "gp_mat"
         },
         {
           "id": "aunt_melior",
@@ -783,7 +772,7 @@ const TREE_DATA = {
           "status": "alive",
           "age": "24",
           "note": "Fear of beasts",
-          "parentId": "gp_mat_f"
+          "parentId": "gp_mat"
         },
         {
           "id": "unc_nwython",
@@ -792,7 +781,7 @@ const TREE_DATA = {
           "status": "dead",
           "age": "24",
           "glory": "342",
-          "parentId": "gp_mat_f"
+          "parentId": "gp_mat"
         }
       ],
       [
@@ -811,14 +800,6 @@ const TREE_DATA = {
           "status": "alive",
           "age": "26",
           "pc": true
-        },
-        {
-          "id": "indeg",
-          "label": "Lady Indeg",
-          "role": "Wife",
-          "status": "alive",
-          "spouseOf": "pc",
-          "glory": 4140
         },
         {
           "id": "keepa",
@@ -869,6 +850,14 @@ const TREE_DATA = {
           "status": "alive",
           "age": "8",
           "parentId": "unc_owain"
+        },
+        {
+          "id": "indeg",
+          "label": "Lady Indeg",
+          "role": "Wife",
+          "status": "alive",
+          "spouseOf": "pc",
+          "glory": 4140
         }
       ],
       [
@@ -951,13 +940,20 @@ const TREE_DATA = {
     "generations": [
       [
         {
-          "id": "gp_pat",
-          "label": "Brochfael & Nesta",
+          "id": "govan",
+          "label": "Govan",
+          "role": "Great Uncle · Knight",
+          "status": "alive",
+          "age": "54"
+        },
+        {
+          "id": "g_pat_f",
+          "label": "Brochfael",
           "status": "dead",
           "ghost": true
         },
         {
-          "id": "gp_mat",
+          "id": "g_mat",
           "label": "Custennin & Arianrhod",
           "status": "dead",
           "ghost": true
@@ -965,21 +961,12 @@ const TREE_DATA = {
       ],
       [
         {
-          "id": "govan",
-          "label": "Govan",
-          "role": "Paternal Uncle · Knight",
-          "status": "alive",
-          "age": "54",
-          "parentId": "gp_pat",
-          "parentId": "gp_pat"
-        },
-        {
           "id": "sulbiu",
           "label": "Sulbiu",
           "role": "Uncle · Knight",
           "status": "dead",
           "age": "36",
-          "parentId": "gp_pat"
+          "parentId": "govan"
         },
         {
           "id": "lovel",
@@ -987,7 +974,7 @@ const TREE_DATA = {
           "role": "Cousin · Knight",
           "status": "alive",
           "age": "38",
-          "parentId": "gp_pat"
+          "parentId": "g_pat_f"
         },
         {
           "id": "dagodoc",
@@ -996,7 +983,7 @@ const TREE_DATA = {
           "status": "dead",
           "age": "59",
           "glory": "2241",
-          "parentId": "gp_pat",
+          "parentId": "g_pat_f",
           "isfather": true
         },
         {
@@ -1005,7 +992,7 @@ const TREE_DATA = {
           "role": "Mother",
           "status": "dead",
           "age": "52",
-          "parentId": "gp_mat",
+          "parentId": "g_mat",
           "ismother": true
         },
         {
@@ -1013,7 +1000,7 @@ const TREE_DATA = {
           "label": "Dyfnarth",
           "status": "alive",
           "ghost": true,
-          "parentId": "gp_mat"
+          "parentId": "g_mat"
         }
       ],
       [
@@ -1075,12 +1062,18 @@ const TREE_DATA = {
       ],
       [
         {
+          "id": "robyn",
+          "label": "Robyn",
+          "role": "Personal Squire",
+          "status": "alive",
+          "age": "18",
+          "parentId": "pc"
+        },
+        {
           "id": "dau_wales",
           "label": "Caer",
-          "role": "Daughter (illegitimate)",
           "status": "alive",
-          "parentId": "pc",
-          "illegitimate": true
+          "parentId": "pc"
         }
       ]
     ],
@@ -1139,101 +1132,6 @@ const TREE_DATA = {
       {
         "label": "Cholderton",
         "note": "Home manor"
-      }
-    ]
-  },
-  "Mellyr": {
-    "pc": "Mellyr",
-    "generations": [
-      [
-        {
-          "id": "gp_pat",
-          "label": "Paternal\nGrandparents",
-          "status": "dead",
-          "ghost": true
-        },
-        {
-          "id": "gp_mat",
-          "label": "Maternal\nGrandparents",
-          "status": "dead",
-          "ghost": true
-        }
-      ],
-      [
-        {
-          "id": "mel_father",
-          "label": "Aled",
-          "role": "Father · Knight",
-          "status": "dead",
-          "parentId": "gp_pat",
-          "isfather": true
-        },
-        {
-          "id": "unc_gwyn",
-          "label": "Gwyn",
-          "role": "Uncle · Knight",
-          "status": "dead",
-          "parentId": "gp_pat"
-        },
-        {
-          "id": "mel_mother",
-          "label": "Non",
-          "role": "Mother · Lady",
-          "status": "alive",
-          "age": "42",
-          "parentId": "gp_mat",
-          "ismother": true
-        }
-      ],
-      [
-        {
-          "id": "cous1",
-          "label": "Cousin 1",
-          "role": "Son of Gwyn · Knight",
-          "status": "alive",
-          "parentId": "unc_gwyn"
-        },
-        {
-          "id": "cous2",
-          "label": "Cousin 2",
-          "role": "Son of Gwyn · Knight",
-          "status": "alive",
-          "parentId": "unc_gwyn"
-        },
-        {
-          "id": "cous3",
-          "label": "Cousin 3",
-          "role": "Son of Gwyn · Knight",
-          "status": "alive",
-          "parentId": "unc_gwyn"
-        },
-        {
-          "id": "pc",
-          "label": "Mellyr",
-          "role": "PC Knight",
-          "status": "alive",
-          "age": "21",
-          "pc": true
-        }
-      ]
-    ],
-    "entourage": [
-      {
-        "label": "Bledri",
-        "role": "Squire",
-        "status": "alive"
-      },
-      {
-        "label": "Manor Priest",
-        "role": "Priest",
-        "status": "alive"
-      }
-    ],
-    "manors": [
-      {
-        "label": "Newton Tony",
-        "role": "Demesne Manor",
-        "note": "Home manor · Site of a Famous Battle of Faeries"
       }
     ]
   }
