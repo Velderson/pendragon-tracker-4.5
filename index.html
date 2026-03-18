@@ -2797,7 +2797,7 @@ let estateSubTab = 'map';
 const MANOR_MAP_CONFIG = {
   Mellyr: {
     manorName: 'Newton Tony',
-    river: { enterEdge:'n', enterPct:0.72, exitEdge:'s', exitPct:0.68, width:8, name:'River Bourne', color:'#5888b0' },
+    river: { enterEdge:'n', enterPct:0.72, exitEdge:'s', exitPct:0.68, width:16, name:'River Bourne', color:'#5888b0' },
     roads: [
       { type:'poor', from:[0.45,0.48], to:[0.0,0.48],  name:'Track to Amesbury' },
       { type:'poor', from:[0.48,0.52], to:[0.48,1.0],   name:'Track to Sarum' },
@@ -2808,7 +2808,7 @@ const MANOR_MAP_CONFIG = {
   },
   Agragan: {
     manorName: 'Cholderton',
-    river: { enterEdge:'n', enterPct:0.58, exitEdge:'s', exitPct:0.62, width:7, name:'River Bourne', color:'#5888b0' },
+    river: { enterEdge:'n', enterPct:0.58, exitEdge:'s', exitPct:0.62, width:14, name:'River Bourne', color:'#5888b0' },
     roads: [
       { type:'poor', from:[0.45,0.50], to:[0.0,0.52], name:'Track to Amesbury' },
     ],
@@ -2818,7 +2818,7 @@ const MANOR_MAP_CONFIG = {
   },
   Rhydian: {
     manorName: 'Stapleford',
-    river: { enterEdge:'w', enterPct:0.58, exitEdge:'e', exitPct:0.62, width:10, name:'River Wylye', color:'#4878a8' },
+    river: { enterEdge:'w', enterPct:0.58, exitEdge:'e', exitPct:0.62, width:18, name:'River Wylye', color:'#4878a8' },
     roads: [
       { type:'good', from:[0.0,0.56], to:[1.0,0.56], name:'Wylye Valley Road' },
       { type:'poor', from:[0.48,0.52], to:[0.48,0.0], name:'Track to Tilshead' },
@@ -2829,7 +2829,7 @@ const MANOR_MAP_CONFIG = {
   },
   Timotheus: {
     manorName: 'Laverstock',
-    river: { enterEdge:'n', enterPct:0.42, exitEdge:'s', exitPct:0.45, width:10, name:'River Avon', color:'#4070a0' },
+    river: { enterEdge:'n', enterPct:0.42, exitEdge:'s', exitPct:0.45, width:18, name:'River Avon', color:'#4070a0' },
     roads: [
       { type:'good', from:[0.0,0.50], to:[0.44,0.50], name:'Road to Sarum' },
       { type:'poor', from:[0.44,0.50], to:[0.44,1.0],  name:'Track south' },
@@ -2840,7 +2840,7 @@ const MANOR_MAP_CONFIG = {
   },
   Gwegon: {
     manorName: 'Broughton',
-    river: { enterEdge:'n', enterPct:0.38, exitEdge:'s', exitPct:0.55, width:6, name:'Broughton Stream', color:'#6090b8' },
+    river: { enterEdge:'n', enterPct:0.38, exitEdge:'s', exitPct:0.55, width:12, name:'Broughton Stream', color:'#6090b8' },
     roads: [
       { type:'poor', from:[0.0,0.52], to:[0.5,0.52], name:'Track to Sarum' },
     ],
@@ -2875,7 +2875,7 @@ function renderManorMapSVG(charName) {
   const improvements = homeManor ? (homeManor.improvements||[]) : [];
   const bonus = homeManor ? (homeManor.bonus||'') : '';
 
-  // Build river path
+  // Build river path — routes around village centre (vx,vy)
   function riverPath(r) {
     const edgePt = (edge, pct) => {
       if (edge==='n') return [pct*W, 0];
@@ -2886,9 +2886,24 @@ function renderManorMapSVG(charName) {
     };
     const [x1,y1] = edgePt(r.enterEdge, r.enterPct);
     const [x2,y2] = edgePt(r.exitEdge,  r.exitPct);
-    // Route river near village if it passes close
-    const mx = (x1+x2)/2 + (Math.random()*40-20);
-    const my = (y1+y2)/2 + (Math.random()*40-20);
+    // Mid-point of straight path
+    let mx = (x1+x2)/2;
+    let my = (y1+y2)/2;
+    // Push control point away from village by 120px minimum
+    const dx = mx - vx, dy = my - vy;
+    const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+    const minClear = 220;
+    if (dist < minClear) {
+      // Nudge perpendicular to the river direction
+      const rdx = x2-x1, rdy = y2-y1;
+      const rlen = Math.sqrt(rdx*rdx + rdy*rdy) || 1;
+      // Perpendicular unit vector
+      const px = -rdy/rlen, py = rdx/rlen;
+      // Push control point to the side that keeps it away from village
+      const side = (dx*px + dy*py) >= 0 ? 1 : -1;
+      mx = mx + px * side * (minClear - dist + 100);
+      my = my + py * side * (minClear - dist + 100);
+    }
     return { path:`M${x1},${y1} Q${mx},${my} ${x2},${y2}`, x1,y1,x2,y2,mx,my };
   }
   const rp = riverPath(cfg.river);
@@ -3346,91 +3361,95 @@ ${roadSvg(cfg.roads)}
   <!-- Village green — muddy central area -->
   <ellipse cx="${vx-5}" cy="${vy+8}" rx="32" ry="25" fill="#c0a858" opacity="0.35"/>
 
-  <!-- PATHS — main street N-S, cross track E-W, a few lanes -->
-  <path d="M${vx-4},${vy-92} Q${vx+3},${vy-40} ${vx},${vy+10} Q${vx-5},${vy+45} ${vx-8},${vy+75}" fill="none" stroke="#a08840" stroke-width="3.5" opacity="0.35" stroke-linecap="round"/>
-  <path d="M${vx-70},${vy-8} Q${vx-30},${vy+5} ${vx+5},${vy+8} Q${vx+40},${vy+10} ${vx+72},${vy+0}" fill="none" stroke="#a08840" stroke-width="2.5" opacity="0.3" stroke-linecap="round"/>
-  <path d="M${vx-60},${vy-50} Q${vx-30},${vy-35} ${vx-5},${vy-38}" fill="none" stroke="#a08840" stroke-width="1.8" opacity="0.25" stroke-linecap="round"/>
-  <path d="M${vx+10},${vy-38} Q${vx+35},${vy-42} ${vx+60},${vy-30}" fill="none" stroke="#a08840" stroke-width="1.8" opacity="0.25" stroke-linecap="round"/>
-  <path d="M${vx-40},${vy+40} Q${vx-18},${vy+35} ${vx-8},${vy+28}" fill="none" stroke="#a08840" stroke-width="1.5" opacity="0.22" stroke-linecap="round"/>
+  <!-- PATHS — main street N-S, cross track E-W, lanes -->
+  <path d="M${vx-4},${vy-92} Q${vx+2},${vy-40} ${vx},${vy+10} Q${vx-4},${vy+45} ${vx-6},${vy+75}" fill="none" stroke="#a08840" stroke-width="3.5" opacity="0.35" stroke-linecap="round"/>
+  <path d="M${vx-70},${vy-8} Q${vx-28},${vy+5} ${vx+5},${vy+8} Q${vx+40},${vy+10} ${vx+72},${vy+0}" fill="none" stroke="#a08840" stroke-width="2.5" opacity="0.3" stroke-linecap="round"/>
+  <path d="M${vx-58},${vy-50} Q${vx-28},${vy-36} ${vx-5},${vy-38}" fill="none" stroke="#a08840" stroke-width="1.8" opacity="0.25" stroke-linecap="round"/>
+  <path d="M${vx+10},${vy-38} Q${vx+34},${vy-42} ${vx+58},${vy-30}" fill="none" stroke="#a08840" stroke-width="1.8" opacity="0.25" stroke-linecap="round"/>
+  <path d="M${vx-38},${vy+42} Q${vx-18},${vy+36} ${vx-8},${vy+28}" fill="none" stroke="#a08840" stroke-width="1.5" opacity="0.22" stroke-linecap="round"/>
 
-  <!-- HUTS — varied sizes, shapes, angles, crambled organically -->
-  <!-- Large longhouse N -->
-  <g transform="rotate(-8,${vx-18},${vy-64})">
-    <rect x="${vx-34}" y="${vy-72}" width="32" height="14" rx="1" fill="#7a4818" stroke="#3a1e06" stroke-width="0.7"/>
-    <polygon points="${vx-34},${vy-72} ${vx-2},${vy-72} ${vx-18},${vy-83}" fill="#5a3210"/>
-  </g>
-  <!-- Small hut NW -->
-  <g transform="rotate(5,${vx-48},${vy-56})">
-    <rect x="${vx-56}" y="${vy-62}" width="16" height="12" rx="1" fill="#6a3e10" stroke="#3a1e06" stroke-width="0.6"/>
-    <polygon points="${vx-56},${vy-62} ${vx-40},${vy-62} ${vx-48},${vy-72}" fill="#4a2808"/>
-  </g>
-  <!-- Medium hut NE -->
-  <g transform="rotate(-12,${vx+28},${vy-60})">
-    <rect x="${vx+18}" y="${vy-68}" width="20" height="13" rx="1" fill="#7a4818" stroke="#3a1e06" stroke-width="0.6"/>
-    <polygon points="${vx+18},${vy-68} ${vx+38},${vy-68} ${vx+28},${vy-79}" fill="#5a3210"/>
-  </g>
-  <!-- Wide byre NNE -->
-  <g transform="rotate(6,${vx+50},${vy-48})">
-    <rect x="${vx+42}" y="${vy-55}" width="24" height="10" rx="1" fill="#6a4018" stroke="#3a1e06" stroke-width="0.6"/>
-    <polygon points="${vx+42},${vy-55} ${vx+66},${vy-55} ${vx+54},${vy-64}" fill="#4a2a08"/>
-  </g>
-  <!-- Tiny hut W -->
-  <g transform="rotate(-4,${vx-58},${vy-30})">
-    <rect x="${vx-66}" y="${vy-36}" width="14" height="10" rx="1" fill="#6a3a10" stroke="#3a1e06" stroke-width="0.6"/>
-    <polygon points="${vx-66},${vy-36} ${vx-52},${vy-36} ${vx-59},${vy-45}" fill="#4a2808"/>
-  </g>
-  <!-- Medium hut E -->
-  <g transform="rotate(10,${vx+60},${vy-22})">
-    <rect x="${vx+52}" y="${vy-28}" width="18" height="12" rx="1" fill="#704018" stroke="#3a1e06" stroke-width="0.6"/>
-    <polygon points="${vx+52},${vy-28} ${vx+70},${vy-28} ${vx+61},${vy-38}" fill="#4e2a08"/>
-  </g>
-  <!-- Angled longhouse W mid -->
-  <g transform="rotate(-15,${vx-52},${vy+5})">
-    <rect x="${vx-70}" y="${vy}" width="36" height="12" rx="1" fill="#7a4418" stroke="#3a1e06" stroke-width="0.7"/>
-    <polygon points="${vx-70},${vy} ${vx-34},${vy} ${vx-52},${vy-11}" fill="#5a3010"/>
-  </g>
-  <!-- Small hut E mid -->
-  <g transform="rotate(8,${vx+58},${vy+10})">
-    <rect x="${vx+50}" y="${vy+4}" width="15" height="11" rx="1" fill="#6a3c10" stroke="#3a1e06" stroke-width="0.6"/>
-    <polygon points="${vx+50},${vy+4} ${vx+65},${vy+4} ${vx+57.5},${vy-5}" fill="#4a2808"/>
-  </g>
-  <!-- Medium hut SW -->
-  <g transform="rotate(12,${vx-45},${vy+36})">
-    <rect x="${vx-58}" y="${vy+29}" width="26" height="13" rx="1" fill="#744018" stroke="#3a1e06" stroke-width="0.6"/>
-    <polygon points="${vx-58},${vy+29} ${vx-32},${vy+29} ${vx-45},${vy+18}" fill="#542e08"/>
-  </g>
-  <!-- Tiny hut S -->
-  <g transform="rotate(-6,${vx-10},${vy+52})">
-    <rect x="${vx-18}" y="${vy+46}" width="13" height="10" rx="1" fill="#643a10" stroke="#3a1e06" stroke-width="0.5"/>
-    <polygon points="${vx-18},${vy+46} ${vx-5},${vy+46} ${vx-11.5},${vy+37}" fill="#482808"/>
-  </g>
-  <!-- Wide barn SE -->
-  <g transform="rotate(5,${vx+15},${vy+46})">
-    <rect x="${vx+4}" y="${vy+40}" width="28" height="12" rx="1" fill="#7a4a18" stroke="#3a1e06" stroke-width="0.7"/>
-    <polygon points="${vx+4},${vy+40} ${vx+32},${vy+40} ${vx+18},${vy+29}" fill="#5a3410"/>
-  </g>
-  <!-- Extra hut NNW -->
-  <g transform="rotate(-10,${vx-32},${vy-50})">
-    <rect x="${vx-40}" y="${vy-56}" width="17" height="11" rx="1" fill="#6e3e10" stroke="#3a1e06" stroke-width="0.6"/>
-    <polygon points="${vx-40},${vy-56} ${vx-23},${vy-56} ${vx-31},${vy-66}" fill="#4c2a08"/>
-  </g>
-  <!-- Extra small hut E south -->
-  <g transform="rotate(4,${vx+48},${vy+28})">
-    <rect x="${vx+42}" y="${vy+22}" width="14" height="10" rx="1" fill="#663c10" stroke="#3a1e06" stroke-width="0.5"/>
-    <polygon points="${vx+42},${vy+22} ${vx+56},${vy+22} ${vx+49},${vy+13}" fill="#4a2808"/>
-  </g>
+  <!-- ── BUILDINGS — all upright, varied shapes ── -->
 
-  <text x="${vx}" y="${vy+82}" text-anchor="middle" font-family="'Cinzel',serif" font-size="11.5" fill="#1e0e04" letter-spacing="0.04em">The Village</text>
+  <!-- CHURCH — inside village, N side near green -->
+  <rect x="${vx-14}" y="${vy-84}" width="28" height="22" fill="#b89c6a" stroke="#6a4e28" stroke-width="1"/>
+  <rect x="${vx-4}" y="${vy-100}" width="8" height="18" fill="#9a8050" stroke="#5a3e1e" stroke-width="0.8"/>
+  <polygon points="${vx},${vy-112} ${vx-5},${vy-100} ${vx+5},${vy-100}" fill="#6a4828"/>
+  <line x1="${vx}" y1="${vy-113}" x2="${vx}" y2="${vy-103}" stroke="#e8d8a0" stroke-width="0.8"/>
+  <line x1="${vx-4}" y1="${vy-108}" x2="${vx+4}" y2="${vy-108}" stroke="#e8d8a0" stroke-width="0.8"/>
+  <rect x="${vx-5}" y="${vy-76}" width="6" height="8" fill="#2a1808"/>
+  <text x="${vx}" y="${vy-116}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="8.5" fill="#2a1206">Church</text>
+
+  <!-- Longhouse NW — wide rectangle, two chimney stubs -->
+  <rect x="${vx-66}" y="${vy-68}" width="38" height="15" fill="#7a4818" stroke="#3a1e06" stroke-width="0.8"/>
+  <polygon points="${vx-66},${vy-68} ${vx-28},${vy-68} ${vx-47},${vy-80}" fill="#5a3210"/>
+  <rect x="${vx-58}" y="${vy-82}" width="4" height="6" fill="#4a2808"/>
+  <rect x="${vx-40}" y="${vy-82}" width="4" height="6" fill="#4a2808"/>
+
+  <!-- Square hut NW inner -->
+  <rect x="${vx-56}" y="${vy-50}" width="14" height="14" fill="#6a3e10" stroke="#3a1e06" stroke-width="0.7"/>
+  <polygon points="${vx-56},${vy-50} ${vx-42},${vy-50} ${vx-49},${vy-60}" fill="#4a2808"/>
+
+  <!-- Narrow tall hut N -->
+  <rect x="${vx-24}" y="${vy-60}" width="12" height="20" fill="#7a4420" stroke="#3a1e06" stroke-width="0.7"/>
+  <polygon points="${vx-24},${vy-60} ${vx-12},${vy-60} ${vx-18},${vy-72}" fill="#5a3010"/>
+
+  <!-- L-shaped farmhouse NE — two rects forming an L -->
+  <rect x="${vx+18}" y="${vy-70}" width="24" height="14" fill="#784020" stroke="#3a1e06" stroke-width="0.7"/>
+  <rect x="${vx+30}" y="${vy-56}" width="12" height="12" fill="#6a3818" stroke="#3a1e06" stroke-width="0.7"/>
+  <polygon points="${vx+18},${vy-70} ${vx+42},${vy-70} ${vx+30},${vy-82}" fill="#503010"/>
+
+  <!-- Wide byre NE -->
+  <rect x="${vx+44}" y="${vy-52}" width="26" height="11" fill="#6a4018" stroke="#3a1e06" stroke-width="0.7"/>
+  <polygon points="${vx+44},${vy-52} ${vx+70},${vy-52} ${vx+57},${vy-62}" fill="#4a2a08"/>
+
+  <!-- Small round-ended hut W — rect with semicircle end -->
+  <rect x="${vx-76}" y="${vy-24}" width="20" height="13" fill="#6a3a10" stroke="#3a1e06" stroke-width="0.7"/>
+  <ellipse cx="${vx-56}" cy="${vy-18}" rx="0" ry="6.5" fill="#6a3a10"/>
+  <polygon points="${vx-76},${vy-24} ${vx-56},${vy-24} ${vx-66},${vy-35}" fill="#4a2808"/>
+
+  <!-- Wide longhouse W mid -->
+  <rect x="${vx-80}" y="${vy+2}" width="40" height="14" fill="#7a4418" stroke="#3a1e06" stroke-width="0.8"/>
+  <polygon points="${vx-80},${vy+2} ${vx-40},${vy+2} ${vx-60},${vy-10}" fill="#5a3010"/>
+  <rect x="${vx-72}" y="${vy-12}" width="4" height="7" fill="#3a2008"/>
+
+  <!-- Small square hut E mid -->
+  <rect x="${vx+56}" y="${vy-18}" width="16" height="16" fill="#704018" stroke="#3a1e06" stroke-width="0.7"/>
+  <polygon points="${vx+56},${vy-18} ${vx+72},${vy-18} ${vx+64},${vy-28}" fill="#4e2a08"/>
+
+  <!-- Medium hut E lower — with small lean-to -->
+  <rect x="${vx+56}" y="${vy+4}" width="18" height="13" fill="#6a3c10" stroke="#3a1e06" stroke-width="0.7"/>
+  <rect x="${vx+74}" y="${vy+8}" width="10" height="9" fill="#5a3010" stroke="#3a1e06" stroke-width="0.5"/>
+  <polygon points="${vx+56},${vy+4} ${vx+74},${vy+4} ${vx+65},${vy-6}" fill="#4a2808"/>
+
+  <!-- L-shaped house SW -->
+  <rect x="${vx-68}" y="${vy+24}" width="22" height="14" fill="#744018" stroke="#3a1e06" stroke-width="0.7"/>
+  <rect x="${vx-56}" y="${vy+38}" width="14" height="11" fill="#6a3818" stroke="#3a1e06" stroke-width="0.6"/>
+  <polygon points="${vx-68},${vy+24} ${vx-46},${vy+24} ${vx-57},${vy+14}" fill="#543010"/>
+
+  <!-- Wide barn S -->
+  <rect x="${vx-24}" y="${vy+52}" width="36" height="14" fill="#7a4a18" stroke="#3a1e06" stroke-width="0.8"/>
+  <polygon points="${vx-24},${vy+52} ${vx+12},${vy+52} ${vx-6},${vy+40}" fill="#5a3410"/>
+  <rect x="${vx-16}" y="${vy+40}" width="4" height="8" fill="#3a2008"/>
+
+  <!-- Small hut SE -->
+  <rect x="${vx+14}" y="${vy+44}" width="14" height="12" fill="#663c10" stroke="#3a1e06" stroke-width="0.6"/>
+  <polygon points="${vx+14},${vy+44} ${vx+28},${vy+44} ${vx+21},${vy+34}" fill="#482808"/>
+
+  <!-- Tiny square hut NNW -->
+  <rect x="${vx-42}" y="${vy-54}" width="12" height="12" fill="#6e3e10" stroke="#3a1e06" stroke-width="0.6"/>
+  <polygon points="${vx-42},${vy-54} ${vx-30},${vy-54} ${vx-36},${vy-64}" fill="#4c2a08"/>
+
+  <!-- Round-ended barn SE -->
+  <rect x="${vx+30}" y="${vy+30}" width="28" height="12" fill="#7a4020" stroke="#3a1e06" stroke-width="0.7"/>
+  <ellipse cx="${vx+58}" cy="${vy+36}" rx="6" ry="6" fill="#7a4020" stroke="#3a1e06" stroke-width="0.7"/>
+  <polygon points="${vx+30},${vy+30} ${vx+58},${vy+30} ${vx+44},${vy+20}" fill="#5a3010"/>
+
+  <text x="${vx}" y="${vy+84}" text-anchor="middle" font-family="'Cinzel',serif" font-size="11.5" fill="#1e0e04" letter-spacing="0.04em">The Village</text>
 </g>
 
-<!-- ── CHURCH (E edge of village) ── -->
+<!-- ── CHURCH — invisible clickable overlay (drawn inside village above) ── -->
 <g id="${svgId}-church" class="mz" data-char="${charName}" data-key="church" style="cursor:pointer">
-  <rect x="${vx+84}" y="${vy-30}" width="26" height="30" rx="1" fill="#9a8060" stroke="#5a3e20" stroke-width="0.9"/>
-  <rect x="${vx+92}" y="${vy-44}" width="10" height="17" fill="#7a6040" stroke="#4a3018" stroke-width="0.7"/>
-  <polygon points="${vx+97},${vy-55} ${vx+90},${vy-45} ${vx+104},${vy-45}" fill="#4a3010"/>
-  <line x1="${vx+97}" y1="${vy-56}" x2="${vx+97}" y2="${vy-46}" stroke="#e0d0a0" stroke-width="0.8"/>
-  <line x1="${vx+93}" y1="${vy-51}" x2="${vx+101}" y2="${vy-51}" stroke="#e0d0a0" stroke-width="0.8"/>
-  <text x="${vx+97}" y="${vy+14}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9.5" fill="#2a1206">Church</text>
+  <rect x="${vx-18}" y="${vy-116}" width="36" height="50" fill="transparent" stroke="none"/>
 </g>
 
 <!-- ── THE HALL ── -->
