@@ -796,13 +796,15 @@ let familySubTab = 'roster'; // 'tree' or 'roster'
 // ═══════════════════════════════════════════════════════
 
 let ftNodes=[], ftEdges=[], ftAnim=null, ftDrag=null, ftSelected=null;
-let ftTick=0, ftCanvas=null, ftCtx=null, ftDpr=1, ftW=900, ftH=660;
+let ftCanvas=null, ftCtx=null, ftDpr=1, ftW=900, ftH=660;
 // Viewport transform
 let ftZoom=1, ftPanX=0, ftPanY=0, ftPanning=false, ftPanStart=null;
 // Expanded parent nodes (click to reveal siblings)
 let ftExpanded = new Set();
 
 const BW=82, BH=38; // node box size
+const ROW_H = 110;  // vertical spacing between generations
+const COL_W = 96;   // horizontal spacing between nodes
 
 function ftColor(status,isPC,illegitimate,isSpouse){
   if(isPC)              return {fill:'#1a0d00',stroke:'#f0c030',text:'#fff0a0',sw:2};
@@ -814,231 +816,175 @@ function ftColor(status,isPC,illegitimate,isSpouse){
   return                       {fill:'#0a0800',stroke:'#c8a040',text:'#ffe8a0',sw:1};
 }
 
+
 // Convert screen coords → world coords
 function ftScreen2World(sx,sy){
   return {x:(sx-ftPanX)/ftZoom, y:(sy-ftPanY)/ftZoom};
 }
 
+// ── Deterministic tree layout ──────────────────────────────────────────────
+// PC is pinned to horizontal centre.
+// Paternal branch fans out to the right, maternal to the left.
+// Positions are computed once — no physics simulation.
+
 function buildFamilyTree(charName){
   cancelAnimationFrame(ftAnim);
-  ftNodes=[]; ftEdges=[]; ftSelected=null; ftTick=0;
+  ftNodes=[]; ftEdges=[]; ftSelected=null;
   ftZoom=1; ftPanX=0; ftPanY=0;
   const data=TREE_DATA[charName];
   if(!data) return;
 
-  // ── Determine which nodes to show ─────────────────────────────
-  // Core: PC, father, mother, spouse(s), children
-  // Expanded: if a parent node is in ftExpanded, also show that parent's siblings
   const allNodes = data.generations.flat();
   const byId = id => allNodes.find(n=>n.id===id);
+  const pcRaw     = allNodes.find(n=>n.pc);
+  const fatherRaw = allNodes.find(n=>n.isfather);
+  const motherRaw = allNodes.find(n=>n.ismother);
+  const fatGpId   = fatherRaw?.parentId;
+  const matGpId   = motherRaw?.parentId;
 
-  const pcNode = allNodes.find(n=>n.pc);
-  const fatherNode = allNodes.find(n=>n.isfather);
-  const motherNode = allNodes.find(n=>n.ismother);
-
-  // Always-visible set
+  // ── 1. Collect visible node ids ─────────────────────────────
   const coreIds = new Set();
-  if(pcNode) coreIds.add(pcNode.id);
-  if(fatherNode) coreIds.add(fatherNode.id);
-  if(motherNode) coreIds.add(motherNode.id);
-  // Spouses of PC
+  if(pcRaw)     coreIds.add(pcRaw.id);
+  if(fatherRaw) coreIds.add(fatherRaw.id);
+  if(motherRaw) coreIds.add(motherRaw.id);
   allNodes.filter(n=>n.spouseOf==='pc').forEach(n=>coreIds.add(n.id));
-  // Children of PC (direct parentId===pc), excluding illegitimate
-  allNodes.filter(n=>n.parentId==='pc' && !n.illegitimate).forEach(n=>coreIds.add(n.id));
-
-  // Expanded: siblings of clicked parent
-  ftExpanded.forEach(parentId=>{
-    const parent = byId(parentId);
-    if(!parent) return;
-    // All nodes sharing the same grandparent (siblings)
-    const gpId = parent.parentId;
-    if(gpId){
-      allNodes.filter(n=>n.parentId===gpId).forEach(n=>coreIds.add(n.id));
-      // Also show the grandparent as a ghost anchor
-      coreIds.add(gpId);
-    }
+  allNodes.filter(n=>n.parentId==='pc'||n.parentId===pcRaw?.id).forEach(n=>coreIds.add(n.id));
+  // grandparents
+  if(fatGpId) coreIds.add(fatGpId);
+  if(matGpId) coreIds.add(matGpId);
+  // all gen-0 nodes (great-uncles etc included by data design)
+  if(data.generations[0]) data.generations[0].forEach(n=>coreIds.add(n.id));
+  // uncles/aunts: children of grandparents
+  if(fatGpId) allNodes.filter(n=>n.parentId===fatGpId).forEach(n=>coreIds.add(n.id));
+  if(matGpId) allNodes.filter(n=>n.parentId===matGpId).forEach(n=>coreIds.add(n.id));
+  // expanded: cousins (children of uncle/aunt)
+  ftExpanded.forEach(uncleId=>{
+    allNodes.filter(n=>n.parentId===uncleId).forEach(n=>coreIds.add(n.id));
   });
 
-  // Build visible nodes with generation recalculation
-  // Assign generations: gp=0, parents=1, pc/siblings=2, children=3
+  const visRaw = allNodes.filter(n=>coreIds.has(n.id));
+
+  // ── 2. Generation index ──────────────────────────────────────
   const genOf = id => {
-    const n = byId(id);
-    if(!n) return 2;
-    if(n.isfather||n.ismother) return 1;
-    if(n.pc||n.spouseOf==='pc') return 2;
-    // Is it a grandparent (parent of father/mother)?
-    const fathGp = fatherNode?.parentId, mothGp = motherNode?.parentId;
-    if(id===fathGp||id===mothGp) return 0;
-    // Is it a sibling of PC (same gen as PC, parentId = father)?
-    if(n.parentId===fatherNode?.id||n.parentId===motherNode?.id) return 2;
-    // Child of PC
-    if(n.parentId==='pc'||n.parentId===pcNode?.id) return 3;
-    // Uncle/aunt (sibling of parent, parentId = grandparent)
-    const fathGpId = fatherNode?.parentId, mothGpId = motherNode?.parentId;
-    if((fathGpId&&n.parentId===fathGpId)||(mothGpId&&n.parentId===mothGpId)) return 1;
-    // Cousin (child of uncle/aunt — one level below uncle)
-    const uncles = allNodes.filter(u=>(fathGpId&&u.parentId===fathGpId)||(mothGpId&&u.parentId===mothGpId));
-    if(uncles.find(u=>u.id===n.parentId)) return 2;
+    const n = byId(id); if(!n) return 2;
+    if(n.pc || n.spouseOf==='pc') return 2;
+    if(n.isfather || n.ismother)  return 1;
+    if(n.parentId==='pc' || n.parentId===pcRaw?.id) return 3;
+    if(id===fatGpId || id===matGpId) return 0;
+    if((fatGpId && n.parentId===fatGpId)||(matGpId && n.parentId===matGpId)) return 1;
+    // cousin level
+    const gen1ids = new Set(visRaw.filter(u=>genOf(u.id)===1).map(u=>u.id));
+    if(gen1ids.has(n.parentId)) return 2;
     return 2;
   };
 
-  const gc = 4; // max generations
-  const visibleNodes = allNodes.filter(n=>coreIds.has(n.id));
+  // ── 3. Branch classification ─────────────────────────────────
+  // 'pat' = paternal (right), 'mat' = maternal (left), 'pc' = centre, 'child' = below
+  const branchOf = id => {
+    const n = byId(id); if(!n) return 'pc';
+    if(n.pc) return 'pc';
+    if(n.spouseOf==='pc') return 'pc';
+    if(n.parentId==='pc' || n.parentId===pcRaw?.id) return 'child';
+    // Walk upward up to 6 steps
+    let cur = n;
+    for(let d=0; d<6; d++){
+      if(cur.id===fatGpId || cur.parentId===fatGpId) return 'pat';
+      if(cur.id===matGpId || cur.parentId===matGpId) return 'mat';
+      if(cur.id===fatherRaw?.id || cur.parentId===fatherRaw?.id) return 'pat';
+      if(cur.id===motherRaw?.id || cur.parentId===motherRaw?.id) return 'mat';
+      if(!cur.parentId) break;
+      const next = byId(cur.parentId);
+      if(!next || next===cur) break;
+      cur = next;
+    }
+    return 'pc';
+  };
 
-  visibleNodes.forEach((n,ni)=>{
+  // ── 4. Group by gen+branch, sort oldest first ────────────────
+  const groups = {};
+  visRaw.forEach(n=>{
+    const key = genOf(n.id)+'_'+branchOf(n.id);
+    if(!groups[key]) groups[key]=[];
+    groups[key].push(n);
+  });
+  Object.values(groups).forEach(g=>g.sort((a,b)=>(parseInt(b.age)||0)-(parseInt(a.age)||0)));
+
+  // ── 5. Assign x,y positions ──────────────────────────────────
+  const maxGen = 3;
+  const yTop=65, yBot=ftH-60;
+  const yOf = gi => yTop + (gi/maxGen)*(yBot-yTop);
+  const cx = ftW/2;
+
+  const posMap = {};
+  visRaw.forEach(n=>{
     const gi = genOf(n.id);
-    const genNodes = visibleNodes.filter(x=>genOf(x.id)===gi);
-    const idx = genNodes.indexOf(n);
-    const xBase = ftW*0.1 + (idx/Math.max(genNodes.length-1,1))*ftW*0.8;
-    const yBase = ftH*0.06 + (gi/Math.max(gc-1,1))*ftH*0.86;
-    // Spouse: place next to PC
-    const xOff = n.spouseOf==='pc' ? 110 : (Math.random()-.5)*20;
+    const br = branchOf(n.id);
+    const key = gi+'_'+br;
+    const grp = groups[key]||[];
+    const idx = grp.indexOf(n);
+    const y = yOf(gi);
+    let x;
+    if(n.pc){
+      x = cx;
+    } else if(n.spouseOf==='pc'){
+      x = cx + COL_W;
+    } else if(br==='child'){
+      const total = grp.length;
+      // centre child group under PC+spouse midpoint
+      const childMid = cx + COL_W/2;
+      x = childMid - ((total-1)/2)*COL_W + idx*COL_W;
+    } else if(br==='pat'){
+      // slot 0 = closest to PC, extends right
+      x = cx + COL_W*1.4 + idx*COL_W;
+    } else if(br==='mat'){
+      // slot 0 = closest to PC, extends left (reverse so oldest outermost)
+      const rev = grp.length - 1 - idx;
+      x = cx - COL_W*1.4 - rev*COL_W;
+    } else {
+      x = cx;
+    }
+    posMap[n.id] = {x, y};
+  });
+
+  // ── 6. Build ftNodes ─────────────────────────────────────────
+  visRaw.forEach(n=>{
+    const pos = posMap[n.id]||{x:cx, y:yOf(2)};
+    const gi  = genOf(n.id);
+    const isUncle = gi===1 && !n.isfather && !n.ismother &&
+      (n.parentId===fatGpId || n.parentId===matGpId);
     ftNodes.push({
       id:n.id, label:n.label||'', role:n.role||'',
-      status:n.ghost?'ghost':(n.status||'alive'),
+      status: n.ghost?'ghost':(n.status||'alive'),
       age:n.age||'', glory:n.glory||'',
       pc:!!n.pc, ghost:!!n.ghost, gi,
       illegitimate:!!n.illegitimate,
-      isSpouse: !!(n.spouseOf==='pc'),
-      expandable: !!(n.isfather||n.ismother),
+      isSpouse:!!(n.spouseOf==='pc'),
+      expandable: !!(n.isfather || n.ismother || isUncle),
       expanded: ftExpanded.has(n.id),
-      x:xBase+xOff, y:yBase+(Math.random()-.5)*15,
-      vx:0,vy:0,pinned:false,
+      x:pos.x, y:pos.y,
       spouseOf:n.spouseOf||null, parentId:n.parentId||null,
       isfather:!!n.isfather, ismother:!!n.ismother,
     });
   });
 
-  const nodeById=id=>ftNodes.find(n=>n.id===id);
-
+  // ── 7. Build ftEdges ─────────────────────────────────────────
+  const nodeById = id => ftNodes.find(n=>n.id===id);
   ftNodes.forEach(n=>{
-    if(n.parentId&&nodeById(n.parentId)) ftEdges.push({a:n.parentId,b:n.id,type:'parent',illegitimate:n.illegitimate});
-    if(n.spouseOf&&nodeById(n.spouseOf)&&!ftEdges.find(e=>e.type==='spouse'&&((e.a===n.id&&e.b===n.spouseOf)||(e.a===n.spouseOf&&e.b===n.id))))
-      ftEdges.push({a:n.spouseOf,b:n.id,type:'spouse'});
+    if(n.parentId && nodeById(n.parentId))
+      ftEdges.push({a:n.parentId, b:n.id, type:'parent', illegitimate:n.illegitimate});
+    if(n.spouseOf && nodeById(n.spouseOf) &&
+       !ftEdges.find(e=>e.type==='spouse'&&((e.a===n.id&&e.b===n.spouseOf)||(e.a===n.spouseOf&&e.b===n.id))))
+      ftEdges.push({a:n.spouseOf, b:n.id, type:'spouse'});
   });
-
-  // Father-PC edge & father-mother couple
-  const fid=ftNodes.find(n=>n.isfather)?.id;
-  const mid=ftNodes.find(n=>n.ismother)?.id;
-  const pid=ftNodes.find(n=>n.pc)?.id;
-  if(fid&&pid&&!ftEdges.find(e=>e.a===fid&&e.b===pid)) ftEdges.push({a:fid,b:pid,type:'parent'});
-  if(fid&&mid&&!ftEdges.find(e=>e.type==='couple')) ftEdges.push({a:fid,b:mid,type:'couple'});
-
-  // Sibling ordering
-  ftNodes.forEach(n=>{ n.sibRank=null; n.sibGroup=null; n.sibTotal=0; });
-  const parentIds=[...new Set(ftEdges.filter(e=>e.type==='parent').map(e=>e.a))];
-  parentIds.forEach(pid=>{
-    const kids=ftEdges.filter(e=>e.type==='parent'&&e.a===pid).map(e=>ftNodes.find(n=>n.id===e.b)).filter(Boolean);
-    if(kids.length<2) return;
-    kids.sort((a,b)=>(parseInt(b.age)||0)-(parseInt(a.age)||0));
-    kids.forEach((k,i)=>{k.sibRank=i;k.sibGroup=pid;k.sibTotal=kids.length;});
-  });
+  const fid  = ftNodes.find(n=>n.isfather)?.id;
+  const mid  = ftNodes.find(n=>n.ismother)?.id;
+  const pcid = ftNodes.find(n=>n.pc)?.id;
+  if(fid && pcid && !ftEdges.find(e=>e.a===fid&&e.b===pcid))
+    ftEdges.push({a:fid, b:pcid, type:'parent'});
+  if(fid && mid && !ftEdges.find(e=>e.type==='couple'))
+    ftEdges.push({a:fid, b:mid, type:'couple'});
 
   ftDrawTree();
-  ftRunSim();
-}
-
-function ftRunSim(){
-  ftTick=0;
-  // Build node lookup map once per sim run (nodes don't change mid-sim)
-  const _simNodeMap = new Map(ftNodes.map(n=>[n.id,n]));
-  function step(){
-    ftTick++;
-    const cool=Math.max(0.02,1-ftTick/350);
-    ftNodes.forEach(n=>{n.fx=0;n.fy=0;});
-
-    // Base repulsion — stronger when something is selected so siblings spread
-    const baseRep = ftSelected ? 5500 : 3800;
-    for(let i=0;i<ftNodes.length;i++) for(let j=i+1;j<ftNodes.length;j++){
-      const a=ftNodes[i],b=ftNodes[j];
-      const dx=b.x-a.x,dy=b.y-a.y,d=Math.max(1,Math.hypot(dx,dy));
-      // Extra push between same-generation nodes when close
-      const sameGen = a.gi===b.gi;
-      const rep = sameGen ? baseRep*1.4 : baseRep;
-      const s=rep/(d*d);
-      a.fx-=dx/d*s; a.fy-=dy/d*s; b.fx+=dx/d*s; b.fy+=dy/d*s;
-    }
-
-    // Strong child separation: find all direct children of selected node and push apart
-    if(ftSelected){
-      // gather children of selected node — use Set for O(1) lookup
-      const childIdSet = new Set(ftEdges
-        .filter(e=>e.type==='parent'&&e.a===ftSelected.id)
-        .map(e=>e.b));
-      const children = ftNodes.filter(n=>childIdSet.has(n.id));
-      // push children apart from each other with strong force
-      for(let i=0;i<children.length;i++) for(let j=i+1;j<children.length;j++){
-        const a=children[i],b=children[j];
-        const dx=b.x-a.x,dy=b.y-a.y,d=Math.max(1,Math.hypot(dx,dy));
-        const minDist=BW*2.2;
-        if(d<minDist){
-          const push=(minDist-d)*0.9;
-          a.fx-=dx/d*push; a.fy-=dy/d*push*0.1;
-          b.fx+=dx/d*push; b.fy+=dy/d*push*0.1;
-        }
-      }
-      // also push all same-gen nodes apart (gentler)
-      const selGen=ftSelected.gi+1; // children's generation
-      const genNodes=ftNodes.filter(n=>n.gi===selGen);
-      for(let i=0;i<genNodes.length;i++) for(let j=i+1;j<genNodes.length;j++){
-        const a=genNodes[i],b=genNodes[j];
-        const dx=b.x-a.x,dy=b.y-a.y,d=Math.max(1,Math.hypot(dx,dy));
-        if(d<BW*1.8){
-          const push=(BW*1.8-d)*0.4;
-          a.fx-=dx/d*push; b.fx+=dx/d*push;
-        }
-      }
-    }
-
-    ftEdges.forEach(e=>{
-      const a=_simNodeMap.get(e.a),b=_simNodeMap.get(e.b);
-      if(!a||!b) return;
-      const dx=b.x-a.x,dy=b.y-a.y,d=Math.max(1,Math.hypot(dx,dy));
-      const ideal=e.type==='spouse'||e.type==='couple'?95:140;
-      const f=(d-ideal)*0.045;
-      a.fx+=dx/d*f; a.fy+=dy/d*f; b.fx-=dx/d*f; b.fy-=dy/d*f;
-    });
-
-    // Use reduce instead of spread+Math.max (avoids stack overflow risk on large arrays)
-    const gc=ftNodes.reduce((m,n)=>n.gi>m?n.gi:m,0)+1;
-    ftNodes.forEach(n=>{
-      const ty=ftH*0.06+(n.gi/Math.max(gc-1,1))*ftH*0.86;
-      n.fy+=(ty-n.y)*0.14;
-      // PC node gets a strong centering pull; all others get a gentle drift
-      if(n.pc) n.fx+=(ftW/2-n.x)*0.18;
-      else n.fx+=(ftW/2-n.x)*0.004;
-    });
-
-    // Sibling ordering (groups precomputed outside step)
-    _sibGroups.forEach(kids=>{
-      if(kids.length<2) return;
-      const cx=kids.reduce((s,k)=>s+k.x,0)/kids.length;
-      let minX=kids[0].x,maxX=kids[0].x;
-      for(let ki=1;ki<kids.length;ki++){if(kids[ki].x<minX)minX=kids[ki].x;if(kids[ki].x>maxX)maxX=kids[ki].x;}
-      const spacing=Math.max(BW*1.35,(maxX-minX)/(kids.length-1)||BW*1.35);
-      const totalW=(kids.length-1)*spacing;
-      kids.forEach((k,i)=>{k.fx+=(cx-totalW/2+i*spacing-k.x)*0.18;});
-    });
-
-    ftNodes.forEach(n=>{
-      if(n.pinned||ftDrag?.node===n) return;
-      n.vx=(n.vx+n.fx)*0.65*cool; n.vy=(n.vy+n.fy)*0.65*cool;
-      n.x=Math.max(60,Math.min(ftW-60,n.x+n.vx));
-      n.y=Math.max(25,Math.min(ftH-25,n.y+n.vy));
-    });
-
-    ftDrawTree();
-    if(ftTick<400) ftAnim=requestAnimationFrame(step);
-  }
-  // Precompute sibling groups once (they don't change during sim)
-  const _sibGroupMap = new Map();
-  ftNodes.forEach(n=>{
-    if(!n.sibGroup) return;
-    if(!_sibGroupMap.has(n.sibGroup)) _sibGroupMap.set(n.sibGroup,[]);
-    _sibGroupMap.get(n.sibGroup).push(n);
-  });
-  const _sibGroups = [..._sibGroupMap.values()].map(g=>g.slice().sort((a,b)=>a.sibRank-b.sibRank));
-  ftAnim=requestAnimationFrame(step);
 }
 
 function ftDrawTree(){
@@ -1275,14 +1221,11 @@ function initFamilyTreeCanvas(charName){
     if(n){
       ftDrag={node:n,ox:wx-n.x,oy:wy-n.y};
       ftSelected=n; ftCanvas.style.cursor='grabbing';
-      ftRunSim(); // restart sim so siblings spread apart
     } else {
-      // left-click on empty space = pan (always, easier than middle-click)
+      // left-click on empty space = pan
       ftPanning=true; ftPanStart={x:x-ftPanX, y:y-ftPanY};
       ftCanvas.style.cursor='move';
-      const hadSel=!!ftSelected;
       ftSelected=null;
-      if(hadSel){ ftRunSim(); } // re-settle when deselected
     }
     ftDrawTree();
   });
@@ -1299,7 +1242,7 @@ function initFamilyTreeCanvas(charName){
       const {x,y}=scrPos(e);
       const moved = _mouseDownPos ? Math.hypot(x-_mouseDownPos.x, y-_mouseDownPos.y) : 99;
       const n=ftDrag.node;
-      ftDrag.node.pinned=true; ftDrag=null; ftCanvas.style.cursor='grab';
+      ftDrag=null; ftCanvas.style.cursor='grab';
       // If barely moved = click, toggle expand on parent nodes
       if(moved < 5 && n.expandable){
         if(ftExpanded.has(n.id)) ftExpanded.delete(n.id);
@@ -1313,7 +1256,7 @@ function initFamilyTreeCanvas(charName){
   ftCanvas.addEventListener('dblclick',e=>{
     const {x,y}=scrPos(e), {x:wx,y:wy}=ftScreen2World(x,y);
     const n=hitNode(wx,wy);
-    if(n){ n.pinned=false; if(ftTick>=400) ftRunSim(); }
+    if(n){ ftDrawTree(); }
   });
 
   // ── Touch ──
@@ -1340,7 +1283,7 @@ function initFamilyTreeCanvas(charName){
     ftDrag.node.x=wx-ftDrag.ox; ftDrag.node.y=wy-ftDrag.oy; ftDrawTree();
   },{passive:false});
   ftCanvas.addEventListener('touchend',()=>{
-    if(ftDrag){ftDrag.node.pinned=true;ftDrag=null;} lastTouchDist=0;
+    if(ftDrag){ftDrag=null;} lastTouchDist=0;
   });
 }
 
