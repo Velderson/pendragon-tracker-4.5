@@ -355,7 +355,7 @@ let npcs = [...SPREADSHEET_NPCS, ...savedCustom,
 // Add extra fields to spreadsheet npcs if missing
 // PORTRAITS loaded from portraits.js
 
-npcs = npcs.map(n => ({appearance:'',personality:'',attitude:'',motivation:'',secret:'',misc:n.misc||'',stats:n.stats||'',...n}));
+npcs = npcs.map(n => ({appearance:'',personality:'',attitude:'',motivation:'',secret:'',misc:n.misc||'',stats:n.stats||'',...n, playerHidden: n.playerHidden || (n.playerVisible === false || n.playerVisible === 'false' || n.playerVisible === 'no' || n.playerVisible === 'No')}));
 
 let editingId = null;
 let selectedId = npcs[0]?.id || null;
@@ -409,9 +409,7 @@ function buildFactionPills(){
         else{factionFilters.push(val);p.classList.add('active');}
         if(factionFilters.length===0)document.querySelector('#factionPills .pill').classList.add('active');
       }
-document.addEventListener('DOMContentLoaded', () => {
-  render();
-});
+      render();
     };
     el.appendChild(p);
   };
@@ -795,497 +793,715 @@ let familySubTab = 'roster'; // 'tree' or 'roster'
 //  INTERACTIVE FAMILY TREE  (canvas, draggable nodes)
 // ═══════════════════════════════════════════════════════
 
-let ftNodes=[], ftEdges=[], ftAnim=null, ftDrag=null, ftSelected=null;
-let ftCanvas=null, ftCtx=null, ftDpr=1, ftW=900, ftH=660;
-// Viewport transform
+let ftNodes=[], ftEdges=[], ftCanvas=null, ftCtx=null, ftDpr=1, ftW=900, ftH=660;
 let ftZoom=1, ftPanX=0, ftPanY=0, ftPanning=false, ftPanStart=null;
-// Expanded parent nodes (click to reveal siblings)
-let ftExpanded = new Set();
 
-const BW=82, BH=38; // node box size
-const ROW_H = 110;  // vertical spacing between generations
-const COL_W = 96;   // horizontal spacing between nodes
+const BW=100, BH=46; // node box
+const H_GAP=24;      // minimum horizontal gap between sibling boxes
+const V_GAP=80;      // vertical gap between generations
 
-function ftColor(status,isPC,illegitimate,isSpouse){
-  if(isPC)              return {fill:'#1a0d00',stroke:'#f0c030',text:'#fff0a0',sw:2};
-  if(isSpouse)          return {fill:'#0d0a18',stroke:'#a090d0',text:'#d0c8f0',sw:1.5};
-  if(illegitimate)      return {fill:'#100808',stroke:'#885050',text:'#c09080',sw:1,dash:true};
-  if(status==='dead')   return {fill:'#0d0000',stroke:'#ff6060',text:'#ffaaaa',sw:1.5};
-  if(status==='unknown')return {fill:'#080810',stroke:'#8888cc',text:'#ccccff',sw:1};
-  if(status==='ghost')  return {fill:'#0a0a08',stroke:'#888866',text:'#cccc99',sw:1};
-  return                       {fill:'#0a0800',stroke:'#c8a040',text:'#ffe8a0',sw:1};
+function ftColor(status, isPC, illegitimate, isSpouse){
+  if(isPC)               return {fill:'#000000', stroke:'#f0c030', text:'#fff0a0', sw:2.5};
+  if(isSpouse)           return {fill:'#000000', stroke:'#a090d0', text:'#d0c8f0', sw:1.5};
+  if(illegitimate)       return {fill:'#000000', stroke:'#885050', text:'#c09080', sw:1, dash:true};
+  if(status==='dead')    return {fill:'#000000', stroke:'#e05050', text:'#ff9090', sw:1.5};
+  if(status==='unknown') return {fill:'#000000', stroke:'#8888cc', text:'#ccccff', sw:1};
+  return                        {fill:'#000000', stroke:'#c8a040', text:'#ffe8a0', sw:1};
 }
 
-
-// Convert screen coords → world coords
-function ftScreen2World(sx,sy){
-  return {x:(sx-ftPanX)/ftZoom, y:(sy-ftPanY)/ftZoom};
-}
-
-// ── Deterministic tree layout ──────────────────────────────────────────────
-// PC is pinned to horizontal centre.
-// Paternal branch fans out to the right, maternal to the left.
-// Positions are computed once — no physics simulation.
+// ── Layout algorithm ─────────────────────────────────────────────────────────
+// Uses a Reingold–Tilford-style bottom-up width calculation so that:
+//   • children are always centred under their parent
+//   • sibling groups never overlap
+//   • lines never cross (children kept in data order)
+// ─────────────────────────────────────────────────────────────────────────────
 
 function buildFamilyTree(charName){
-  cancelAnimationFrame(ftAnim);
-  ftNodes=[]; ftEdges=[]; ftSelected=null;
-  ftZoom=1; ftPanX=0; ftPanY=0;
-  const data=TREE_DATA[charName];
+  ftNodes = []; ftEdges = [];
+
+  const data = TREE_DATA[charName];
   if(!data) return;
 
   const allNodes = data.generations.flat();
-  const byId = id => allNodes.find(n=>n.id===id);
-  const pcRaw     = allNodes.find(n=>n.pc);
-  const fatherRaw = allNodes.find(n=>n.isfather);
-  const motherRaw = allNodes.find(n=>n.ismother);
-  const fatGpId   = fatherRaw?.parentId;
-  const matGpId   = motherRaw?.parentId;
+  const byId     = id => allNodes.find(n => n.id === id);
 
-  // ── 1. Collect visible node ids ─────────────────────────────
-  const coreIds = new Set();
-  if(pcRaw)     coreIds.add(pcRaw.id);
-  if(fatherRaw) coreIds.add(fatherRaw.id);
-  if(motherRaw) coreIds.add(motherRaw.id);
-  allNodes.filter(n=>n.spouseOf==='pc').forEach(n=>coreIds.add(n.id));
-  allNodes.filter(n=>n.parentId==='pc'||n.parentId===pcRaw?.id).forEach(n=>coreIds.add(n.id));
-  // grandparents
-  if(fatGpId) coreIds.add(fatGpId);
-  if(matGpId) coreIds.add(matGpId);
-  // all gen-0 nodes (great-uncles etc included by data design)
-  if(data.generations[0]) data.generations[0].forEach(n=>coreIds.add(n.id));
-  // uncles/aunts: children of grandparents
-  if(fatGpId) allNodes.filter(n=>n.parentId===fatGpId).forEach(n=>coreIds.add(n.id));
-  if(matGpId) allNodes.filter(n=>n.parentId===matGpId).forEach(n=>coreIds.add(n.id));
-  // expanded: cousins (children of uncle/aunt)
-  ftExpanded.forEach(uncleId=>{
-    allNodes.filter(n=>n.parentId===uncleId).forEach(n=>coreIds.add(n.id));
-  });
+  // ── 1. Assign generation index ──────────────────────────────
+  const genIndex = new Map(); // id → gi
+  data.generations.forEach((gen, gi) => gen.forEach(n => genIndex.set(n.id, gi)));
 
-  const visRaw = allNodes.filter(n=>coreIds.has(n.id));
+  // ── 1b. Auto-assign parentId to PC & siblings that lack one ───
+  // The data files don't set parentId on the PC or their siblings, but
+  // there is always an isfather node one generation above. Wire them up now.
+  const fatherNode = allNodes.find(n => n.isfather);
+  const motherNode = allNodes.find(n => n.ismother);
+  const pcNode     = allNodes.find(n => n.pc);
 
-  // ── 2. Generation index ──────────────────────────────────────
-  const genOf = id => {
-    const n = byId(id); if(!n) return 2;
-    if(n.pc || n.spouseOf==='pc') return 2;
-    if(n.isfather || n.ismother)  return 1;
-    if(n.parentId==='pc' || n.parentId===pcRaw?.id) return 3;
-    if(id===fatGpId || id===matGpId) return 0;
-    if((fatGpId && n.parentId===fatGpId)||(matGpId && n.parentId===matGpId)) return 1;
-    // cousin level
-    const gen1ids = new Set(visRaw.filter(u=>genOf(u.id)===1).map(u=>u.id));
-    if(gen1ids.has(n.parentId)) return 2;
-    return 2;
-  };
+  // ── Inject placeholder grandparent nodes if missing ──────────
+  // So the layout always has a paternal root (right) and maternal root (left).
+  const fatherGi = fatherNode ? genIndex.get(fatherNode.id) : -1;
+  const motherGi = motherNode ? genIndex.get(motherNode.id) : -1;
+  const parGi    = fatherGi >= 0 ? fatherGi : motherGi >= 0 ? motherGi : -1;
+  if(parGi > 0){
+    const gpGi = parGi - 1;
+    const hasGpPat = data.generations[gpGi] && data.generations[gpGi].some(n => n.id === 'gp_pat' || n.id === 'gp_pat_f');
+    const hasGpMat = data.generations[gpGi] && data.generations[gpGi].some(n => n.id === 'gp_mat' || n.id === 'gp_mat_f');
+    if(!hasGpPat && fatherNode){
+      const placeholder = {id:'gp_pat', label:'Grandfather', role:'Paternal Grandparents', status:'dead', ghost:true};
+      if(!data.generations[gpGi]) data.generations[gpGi] = [];
+      data.generations[gpGi].push(placeholder);
+      allNodes.push(placeholder);
+      genIndex.set('gp_pat', gpGi);
+      fatherNode.parentId = 'gp_pat';
+    }
+    if(!hasGpMat && motherNode){
+      const placeholder = {id:'gp_mat', label:'Grandmother', role:'Maternal Grandparents', status:'dead', ghost:true};
+      if(!data.generations[gpGi]) data.generations[gpGi] = [];
+      data.generations[gpGi].unshift(placeholder);
+      allNodes.push(placeholder);
+      genIndex.set('gp_mat', gpGi);
+      motherNode.parentId = 'gp_mat';
+    }
+  }
+  // ── 2. Build parent→children map ──────────────────────────────
+  const children = new Map();
+  function rebuildChildren(){
+    children.clear();
+    allNodes.forEach(n => {
+      if(n.parentId){
+        if(!children.has(n.parentId)) children.set(n.parentId, []);
+        if(!children.get(n.parentId).includes(n.id))
+          children.get(n.parentId).push(n.id);
+      }
+    });
+  }
+  rebuildChildren();
 
-  // ── 3. Branch classification ─────────────────────────────────
-  // 'pat' = paternal (right), 'mat' = maternal (left), 'pc' = centre, 'child' = below
-  const branchOf = id => {
-    const n = byId(id); if(!n) return 'pc';
-    if(n.pc) return 'pc';
-    if(n.spouseOf==='pc') return 'pc';
-    if(n.parentId==='pc' || n.parentId===pcRaw?.id) return 'child';
-    // Walk upward up to 6 steps
-    let cur = n;
-    for(let d=0; d<6; d++){
-      if(cur.id===fatGpId || cur.parentId===fatGpId) return 'pat';
-      if(cur.id===matGpId || cur.parentId===matGpId) return 'mat';
-      if(cur.id===fatherRaw?.id || cur.parentId===fatherRaw?.id) return 'pat';
-      if(cur.id===motherRaw?.id || cur.parentId===motherRaw?.id) return 'mat';
+  if(fatherNode && pcNode){
+    const pcGen = genIndex.get(pcNode.id);
+    const parGen = genIndex.get(fatherNode.id);
+    if(pcGen !== undefined && parGen !== undefined && pcGen === parGen + 1){
+      data.generations[pcGen].forEach(n => {
+        if(!n.parentId && !n.spouseOf) n.parentId = fatherNode.id;
+      });
+    }
+  }
+  rebuildChildren();
+
+  // ── 3. Order nodes within each generation ───────────────────
+  //
+  // Target layout per row:
+  //   Gen 0: [mat grandparents] ... [pat grandparents]
+  //   Gen 1: [pat uncles] [Father] | [Mother] [mat uncles]
+  //   Gen 2: [pat cousins] [PC] [Wife] [mat cousins]
+  //   Gen 3: [children]
+  //
+  // Rule: paternal side LEFT, maternal side RIGHT, PC+spouse centre.
+  // ─────────────────────────────────────────────────────────────
+
+  const numGens = data.generations.length;
+
+  // ── 3a. Tag every node with its side ─────────────────────────
+  // 'pat' = paternal family, 'mat' = maternal family, 'pc' = PC+spouse, 'child' = PC's descendants
+  const side = new Map();
+
+  function tagTree(rootId, label){
+    const queue = [rootId];
+    while(queue.length){
+      const id = queue.shift();
+      if(side.has(id)) continue;
+      side.set(id, label);
+      allNodes.forEach(n => { if(n.spouseOf === id && !side.has(n.id)) side.set(n.id, label); });
+      (children.get(id)||[]).forEach(c => queue.push(c));
+    }
+  }
+
+  // Tag upward from father/mother to grandparents, then tag all their descendants too
+  function tagUp(nodeId, label){
+    let cur = allNodes.find(n => n.id === nodeId);
+    while(cur){
+      if(!side.has(cur.id)) side.set(cur.id, label);
+      allNodes.forEach(n => { if(n.spouseOf === cur.id && !side.has(n.id)) side.set(n.id, label); });
+      // Also tag all descendants of this ancestor (sibling subtrees)
+      tagTree(cur.id, label);
       if(!cur.parentId) break;
-      const next = byId(cur.parentId);
-      if(!next || next===cur) break;
-      cur = next;
+      cur = allNodes.find(n => n.id === cur.parentId);
     }
-    return 'pc';
-  };
+  }
 
-  // ── 4. Group by gen+branch, sort oldest first ────────────────
-  const groups = {};
-  visRaw.forEach(n=>{
-    const key = genOf(n.id)+'_'+branchOf(n.id);
-    if(!groups[key]) groups[key]=[];
-    groups[key].push(n);
-  });
-  Object.values(groups).forEach(g=>g.sort((a,b)=>(parseInt(b.age)||0)-(parseInt(a.age)||0)));
-
-  // ── 5. Assign x,y positions ──────────────────────────────────
-  const maxGen = 3;
-  const yTop=65, yBot=ftH-60;
-  const yOf = gi => yTop + (gi/maxGen)*(yBot-yTop);
-  const cx = ftW/2;
-
-  const posMap = {};
-  visRaw.forEach(n=>{
-    const gi = genOf(n.id);
-    const br = branchOf(n.id);
-    const key = gi+'_'+br;
-    const grp = groups[key]||[];
-    const idx = grp.indexOf(n);
-    const y = yOf(gi);
-    let x;
-    if(n.pc){
-      x = cx;
-    } else if(n.spouseOf==='pc'){
-      x = cx + COL_W;
-    } else if(br==='child'){
-      const total = grp.length;
-      // centre child group under PC+spouse midpoint
-      const childMid = cx + COL_W/2;
-      x = childMid - ((total-1)/2)*COL_W + idx*COL_W;
-    } else if(br==='pat'){
-      // slot 0 = closest to PC, extends right
-      x = cx + COL_W*1.4 + idx*COL_W;
-    } else if(br==='mat'){
-      // slot 0 = closest to PC, extends left (reverse so oldest outermost)
-      const rev = grp.length - 1 - idx;
-      x = cx - COL_W*1.4 - rev*COL_W;
-    } else {
-      x = cx;
+  if(fatherNode){ tagTree(fatherNode.id, 'pat'); tagUp(fatherNode.id, 'pat'); }
+  if(motherNode){ tagTree(motherNode.id, 'mat'); tagUp(motherNode.id, 'mat'); }
+  if(pcNode){
+    side.set(pcNode.id, 'pc');
+    allNodes.forEach(n => { if(n.spouseOf === pcNode.id) side.set(n.id, 'pc'); });
+    function tagChildren(id){
+      (children.get(id)||[]).forEach(cid => { side.set(cid,'child'); tagChildren(cid); });
     }
-    posMap[n.id] = {x, y};
+    tagChildren(pcNode.id);
+  }
+  // Fallback
+  allNodes.forEach(n => { if(!side.has(n.id)) side.set(n.id, 'mat'); });
+
+  // ── 3b. Order each generation: mat-LEFT | pc-CENTRE | pat-RIGHT | children-CENTRE ──
+  //   Father's family on right, mother's family on left (mothers marry in)
+  const genOrder = data.generations.map(gen => {
+    const ids = gen.map(n => n.id);
+    const pat   = ids.filter(id => side.get(id) === 'pat');
+    const pc    = ids.filter(id => side.get(id) === 'pc');
+    const mat   = ids.filter(id => side.get(id) === 'mat');
+    const child = ids.filter(id => side.get(id) === 'child');
+    return [...mat, ...pc, ...pat, ...child];
   });
+
+  // ── 3c. Within pat/mat groups, keep children grouped under their parent ──
+  for(let gi = 1; gi < numGens; gi++){
+    const prevOrder = genOrder[gi-1];
+
+    function sortByParent(ids){
+      const ordered = [], placed = new Set();
+      prevOrder.forEach(pid => {
+        (children.get(pid)||[]).filter(id => ids.includes(id)).forEach(id => {
+          if(!placed.has(id)){ ordered.push(id); placed.add(id); }
+        });
+      });
+      ids.forEach(id => { if(!placed.has(id)){ ordered.push(id); placed.add(id); } });
+      return ordered;
+    }
+
+    const pat   = genOrder[gi].filter(id => side.get(id)==='pat');
+    const pc    = genOrder[gi].filter(id => side.get(id)==='pc');
+    const mat   = genOrder[gi].filter(id => side.get(id)==='mat');
+    const child = genOrder[gi].filter(id => side.get(id)==='child');
+
+    let matSorted = sortByParent(mat);
+    let patSorted = sortByParent(pat);
+
+    // Put mother rightmost in mat group (closest to centre)
+    const motherIdx = matSorted.findIndex(id => { const nd = allNodes.find(x=>x.id===id); return nd && nd.ismother; });
+    if(motherIdx >= 0 && motherIdx < matSorted.length - 1){
+      const [mid] = matSorted.splice(motherIdx, 1);
+      matSorted.push(mid);
+    }
+    // Put father leftmost in pat group (closest to centre)
+    const fatherIdx = patSorted.findIndex(id => { const nd = allNodes.find(x=>x.id===id); return nd && nd.isfather; });
+    if(fatherIdx > 0){
+      const [fid] = patSorted.splice(fatherIdx, 1);
+      patSorted.unshift(fid);
+    }
+
+    genOrder[gi] = [...matSorted, ...pc, ...patSorted, ...sortByParent(child)];
+  }
+
+  // ── 3d. Ensure spouses are always adjacent ────────────────────
+  for(let gi = 0; gi < numGens; gi++){
+    const ids = [...genOrder[gi]];
+    for(let i = 0; i < ids.length; i++){
+      const n = allNodes.find(x => x.id === ids[i]);
+      if(!n || !n.spouseOf) continue;
+      const pi = ids.indexOf(n.spouseOf);
+      if(pi === -1 || Math.abs(pi - i) === 1) continue;
+      ids.splice(i, 1);
+      const newPi = ids.indexOf(n.spouseOf);
+      ids.splice(newPi + 1, 0, n.id);
+      i = Math.max(0, i - 1);
+    }
+    genOrder[gi] = ids;
+  }
+
+  // ── 4. Assign x positions ────────────────────────────────────
+  // For each generation, place nodes left-to-right in genOrder,
+  // centring each node's children-group under the parent.
+
+  function subtreeW(id){
+    const kids = (children.get(id)||[]).filter(k => genIndex.has(k));
+    if(!kids.length) return BW;
+    return Math.max(BW, kids.reduce((s,k) => s + subtreeW(k), 0) + H_GAP*(kids.length-1));
+  }
+
+  const xPos = new Map();
+
+  // Gen 0: space by subtree width
+  {
+    const ids = genOrder[0];
+    const widths = ids.map(id => subtreeW(id));
+    let cx = 0;
+    ids.forEach((id, i) => {
+      cx += widths[i]/2;
+      xPos.set(id, cx);
+      cx += widths[i]/2 + H_GAP;
+    });
+  }
+
+  // Gens 1+: centre under parent, then resolve overlaps
+  for(let gi = 1; gi < numGens; gi++){
+    const ids = genOrder[gi];
+    if(!ids.length) continue;
+
+    const ideal = new Map();
+
+    // For each parent in prev gen, centre its children group under it
+    genOrder[gi-1].forEach(pid => {
+      const kids = (children.get(pid)||[]).filter(k => genOrder[gi].includes(k));
+      if(!kids.length) return;
+      const kw = kids.map(k => subtreeW(k));
+      const totalW = kw.reduce((a,b)=>a+b,0) + H_GAP*(kids.length-1);
+      let cx = (xPos.get(pid)||0) - totalW/2;
+      kids.forEach((kid,i) => {
+        ideal.set(kid, cx + kw[i]/2);
+        cx += kw[i] + H_GAP;
+      });
+    });
+
+    // Nodes with no parent placed provisionally
+    let cursor = 0;
+    ids.forEach(id => {
+      if(!ideal.has(id)){
+        const w = subtreeW(id);
+        ideal.set(id, cursor + w/2);
+        cursor += w + H_GAP;
+      } else {
+        cursor = Math.max(cursor, ideal.get(id) + subtreeW(id)/2 + H_GAP);
+      }
+    });
+
+    // Resolve overlaps left-to-right
+    const positions = ids.map(id => ideal.get(id)||0);
+    for(let i = 1; i < positions.length; i++){
+      const minX = positions[i-1] + BW/2 + H_GAP + BW/2;
+      if(positions[i] < minX) positions[i] = minX;
+    }
+    ids.forEach((id,i) => xPos.set(id, positions[i]));
+  }
+
+  // ── 5. Compute total canvas size ────────────────────────────
+  const allX = [...xPos.values()];
+  const totalW = Math.max(ftW, Math.max(...allX) + BW/2 + 60);
+  const totalH = numGens * (BH + V_GAP) + 80;
+
+  // Shift everything so leftmost node has x=BW/2+40
+  const minX = Math.min(...allX);
+  const shiftX = BW/2 + 40 - minX;
+  xPos.forEach((v, k) => xPos.set(k, v + shiftX));
+
+  const worldW = Math.max(ftW, Math.max(...xPos.values()) + BW/2 + 60);
+  const worldH = Math.max(ftH, totalH);
+  ftNodes._worldW = worldW;
+  ftNodes._worldH = worldH;
 
   // ── 6. Build ftNodes ─────────────────────────────────────────
-  visRaw.forEach(n=>{
-    const pos = posMap[n.id]||{x:cx, y:yOf(2)};
-    const gi  = genOf(n.id);
-    const isUncle = gi===1 && !n.isfather && !n.ismother &&
-      (n.parentId===fatGpId || n.parentId===matGpId);
+  allNodes.forEach(n => {
+    if(!xPos.has(n.id)) return; // skip nodes not placed
+    const gi = genIndex.get(n.id);
     ftNodes.push({
-      id:n.id, label:n.label||'', role:n.role||'',
-      status: n.ghost?'ghost':(n.status||'alive'),
-      age:n.age||'', glory:n.glory||'',
-      pc:!!n.pc, ghost:!!n.ghost, gi,
-      illegitimate:!!n.illegitimate,
-      isSpouse:!!(n.spouseOf==='pc'),
-      expandable: !!(n.isfather || n.ismother || isUncle),
-      expanded: ftExpanded.has(n.id),
-      x:pos.x, y:pos.y,
-      spouseOf:n.spouseOf||null, parentId:n.parentId||null,
-      isfather:!!n.isfather, ismother:!!n.ismother,
+      id: n.id,
+      label: n.label || '',
+      role:  n.role  || '',
+      status: n.status || 'alive',
+      age:   n.age   || '',
+      glory: n.glory || '',
+      pc:    !!n.pc,
+      ghost: !!n.ghost,
+      illegitimate: !!n.illegitimate,
+      isSpouse: !!(n.spouseOf),
+      gi,
+      x: xPos.get(n.id),
+      y: 50 + gi * (BH + V_GAP),
+      parentId:  n.parentId  || null,
+      spouseOf:  n.spouseOf  || null,
+      isfather:  !!n.isfather,
+      ismother:  !!n.ismother,
     });
   });
 
-  // ── 7. Build ftEdges ─────────────────────────────────────────
-  const nodeById = id => ftNodes.find(n=>n.id===id);
-  ftNodes.forEach(n=>{
-    if(n.parentId && nodeById(n.parentId))
-      ftEdges.push({a:n.parentId, b:n.id, type:'parent', illegitimate:n.illegitimate});
-    if(n.spouseOf && nodeById(n.spouseOf) &&
-       !ftEdges.find(e=>e.type==='spouse'&&((e.a===n.id&&e.b===n.spouseOf)||(e.a===n.spouseOf&&e.b===n.id))))
-      ftEdges.push({a:n.spouseOf, b:n.id, type:'spouse'});
+  // ── 7. Build edges ───────────────────────────────────────────
+  const nodeMap = new Map(ftNodes.map(n => [n.id, n]));
+
+  // Auto-link PC and siblings that have no parentId to the father node.
+  // These are nodes in the same generation as the PC that lack a parentId
+  // and are not spouses — they must be children of the father/mother.
+  const fatherFtNode = ftNodes.find(n => n.isfather);
+  const motherFtNode = ftNodes.find(n => n.ismother);
+  const pcFtNode     = ftNodes.find(n => n.pc);
+  if(fatherFtNode && pcFtNode){
+    const pcGi = pcFtNode.gi;
+    ftNodes.forEach(n => {
+      if(n.gi === pcGi && !n.parentId && !n.spouseOf && !n.isfather && !n.ismother){
+        n.parentId = fatherFtNode.id;
+      }
+    });
+  }
+
+  ftNodes.forEach(n => {
+    if(n.parentId && nodeMap.has(n.parentId)){
+      ftEdges.push({a: n.parentId, b: n.id, type: 'parent', illegitimate: n.illegitimate});
+    }
+    if(n.spouseOf && nodeMap.has(n.spouseOf)){
+      const already = ftEdges.find(e => e.type==='spouse' && ((e.a===n.id&&e.b===n.spouseOf)||(e.a===n.spouseOf&&e.b===n.id)));
+      if(!already) ftEdges.push({a: n.spouseOf, b: n.id, type: 'spouse'});
+    }
   });
-  const fid  = ftNodes.find(n=>n.isfather)?.id;
-  const mid  = ftNodes.find(n=>n.ismother)?.id;
-  const pcid = ftNodes.find(n=>n.pc)?.id;
-  if(fid && pcid && !ftEdges.find(e=>e.a===fid&&e.b===pcid))
-    ftEdges.push({a:fid, b:pcid, type:'parent'});
-  if(fid && mid && !ftEdges.find(e=>e.type==='couple'))
-    ftEdges.push({a:fid, b:mid, type:'couple'});
+  // father–mother couple edge
+  const fid = fatherFtNode?.id;
+  const mid = motherFtNode?.id;
+  if(fid && mid && !ftEdges.find(e => e.type==='couple')){
+    ftEdges.push({a: fid, b: mid, type: 'couple'});
+  }
+
+  // ── 8. Centre initial view on PC ────────────────────────────
+  const pcNodeView = ftNodes.find(n => n.pc);
+  if(pcNodeView){
+    ftPanX = ftW/2 - pcNodeView.x;
+    ftPanY = Math.max(20, ftH*0.3 - pcNodeView.y);
+  } else {
+    ftPanX = 40; ftPanY = 40;
+  }
 
   ftDrawTree();
 }
 
+// ── Draw ─────────────────────────────────────────────────────────────────────
+const PARCHMENT_BG = '#f5ead6';
+
 function ftDrawTree(){
   if(!ftCtx) return;
-  const ctx=ftCtx;
-  ctx.clearRect(0,0,ftW*ftDpr,ftH*ftDpr);
+  const ctx = ftCtx;
+  ctx.clearRect(0, 0, ftW * ftDpr, ftH * ftDpr);
 
-  // Background
-  ctx.fillStyle='#000000'; ctx.fillRect(0,0,ftW*ftDpr,ftH*ftDpr);
+  ctx.save(); ctx.scale(ftDpr, ftDpr);
 
-  ctx.save();
-  ctx.scale(ftDpr,ftDpr);
-  // Apply pan+zoom
-  ctx.translate(ftPanX,ftPanY);
-  ctx.scale(ftZoom,ftZoom);
+  // Beige parchment background
+  ctx.fillStyle = PARCHMENT_BG;
+  ctx.fillRect(0, 0, ftW, ftH);
 
-  // ── Edges ──
-  // Build a fast id→node map once per draw call instead of O(n) find() per edge
-  const _nodeMap = new Map(ftNodes.map(n=>[n.id,n]));
-  ftEdges.forEach(e=>{
-    const a=_nodeMap.get(e.a),b=_nodeMap.get(e.b);
-    if(!a||!b) return;
-    const sel=ftSelected&&(ftSelected.id===a.id||ftSelected.id===b.id);
-    const dim=ftSelected&&!sel;
-    ctx.globalAlpha=dim?0.12:sel?0.95:0.55;
-    if(e.type==='spouse'||e.type==='couple'){
-      ctx.strokeStyle='#b8962a'; ctx.lineWidth=(sel?2:1.2)/ftZoom; ctx.setLineDash([4/ftZoom,3/ftZoom]);
-      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
-      ctx.setLineDash([]);
-    } else {
-      const my=(a.y+b.y)/2;
-      ctx.strokeStyle=sel?'#d4a017':'#5a4010'; ctx.lineWidth=(sel?1.8:1)/ftZoom;
-      ctx.beginPath();
-      ctx.moveTo(a.x,a.y+BH/2); ctx.lineTo(a.x,my);
-      ctx.lineTo(b.x,my);        ctx.lineTo(b.x,b.y-BH/2);
-      ctx.stroke();
+  ctx.translate(ftPanX, ftPanY);
+  ctx.scale(ftZoom, ftZoom);
+
+  const nodeMap = new Map(ftNodes.map(n => [n.id, n]));
+
+  // ── Build a map of couple/spouse pairs for connector routing ──
+  // When both parents exist, children should drop from the midpoint of the couple line
+  const coupleMap = new Map(); // nodeId → partnerId
+  ftEdges.forEach(e => {
+    if(e.type === 'couple' || e.type === 'spouse'){
+      coupleMap.set(e.a, e.b);
+      coupleMap.set(e.b, e.a);
     }
   });
-  ctx.globalAlpha=1;
 
-  // ── Nodes ──
-  // Precompute which nodes are connected to selected (avoids O(edges) per node)
-  const _connectedIds = ftSelected
-    ? new Set(ftEdges.flatMap(e=>(e.a===ftSelected.id||e.b===ftSelected.id)?[e.a,e.b]:[]))
-    : null;
-  ftNodes.forEach(n=>{
-    const col=ftColor(n.status,n.pc,n.illegitimate,n.isSpouse);
-    const sel=ftSelected&&ftSelected.id===n.id;
-    const conn=_connectedIds&&_connectedIds.has(n.id);
-    const dim=ftSelected&&!sel&&!conn;
-    ctx.globalAlpha=dim?0.4:n.ghost?0.75:1;
-
-    const nx=n.x-BW/2, ny=n.y-BH/2;
-
-    // Shadow for depth
-    if(!dim&&!n.ghost){
-      ctx.shadowColor='rgba(0,0,0,0.6)'; ctx.shadowBlur=4/ftZoom; ctx.shadowOffsetY=2/ftZoom;
-    }
-    ctx.fillStyle=col.fill;
-    ctx.strokeStyle=sel?'#ffd700':col.stroke;
-    ctx.lineWidth=(sel?2:col.sw)/ftZoom;
-    // Dashed border for illegitimate
-    if(col.dash) ctx.setLineDash([3/ftZoom,2/ftZoom]);
-    ctx.beginPath(); ctx.roundRect(nx,ny,BW,BH,3); ctx.fill(); ctx.stroke();
+  // ── Spouse/couple lines (draw FIRST so connectors layer on top) ──
+  ftEdges.forEach(e => {
+    if(e.type !== 'spouse' && e.type !== 'couple') return;
+    const a = nodeMap.get(e.a), b = nodeMap.get(e.b);
+    if(!a || !b) return;
+    ctx.strokeStyle = e.type === 'couple' ? '#d4a040' : '#a090d0';
+    ctx.lineWidth   = (e.type === 'couple' ? 2.5 : 2) / ftZoom;
     ctx.setLineDash([]);
-    ctx.shadowColor='transparent'; ctx.shadowBlur=0; ctx.shadowOffsetY=0;
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    ctx.moveTo(a.x + (b.x > a.x ? BW/2 : -BW/2), a.y);
+    ctx.lineTo(b.x + (b.x > a.x ? -BW/2 : BW/2), b.y);
+    ctx.stroke();
+    // Small heart/ring marker at midpoint for couple
+    if(e.type === 'couple'){
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      ctx.fillStyle = '#d4a040';
+      ctx.beginPath();
+      ctx.arc(mx, my, 3/ftZoom, 0, Math.PI*2);
+      ctx.fill();
+    }
+  });
 
-    // Dead X
-    if(n.status==='dead'&&!n.ghost){
-      ctx.save(); ctx.globalAlpha=(dim?0.35:1)*0.18;
-      ctx.strokeStyle='#993333'; ctx.lineWidth=0.7/ftZoom;
-      ctx.beginPath(); ctx.moveTo(nx+3,ny+3); ctx.lineTo(nx+BW-3,ny+BH-3); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(nx+BW-3,ny+3); ctx.lineTo(nx+3,ny+BH-3); ctx.stroke();
-      ctx.restore();
+  // ── Parent–child connectors ───────────────────────────────────
+  // Group children by parent so we can draw a single horizontal bar
+  const parentToChildren = new Map();
+  ftEdges.forEach(e => {
+    if(e.type !== 'parent') return;
+    if(!parentToChildren.has(e.a)) parentToChildren.set(e.a, []);
+    parentToChildren.get(e.a).push(e.b);
+  });
+
+  parentToChildren.forEach((childIds, pid) => {
+    const par = nodeMap.get(pid);
+    if(!par) return;
+    const kids = childIds.map(id => nodeMap.get(id)).filter(Boolean);
+    if(!kids.length) return;
+
+    const illegKids  = kids.filter(k => k.illegitimate);
+    const legitKids  = kids.filter(k => !k.illegitimate);
+
+    // Determine anchor point for child connectors
+    // When a couple exists, draw from the parent's bottom, but add a short
+    // stub from the couple-line midpoint to show the marriage connection
+    let anchorX = par.x;
+    let anchorY = par.y + BH/2;
+    const partnerId = coupleMap.get(pid);
+    const partner = partnerId ? nodeMap.get(partnerId) : null;
+
+    // Draw legitimate children grouped
+    if(legitKids.length){
+      const barY   = (anchorY + legitKids[0].y - BH/2) / 2;
+      const leftX  = Math.min(anchorX, ...legitKids.map(k => k.x));
+      const rightX = Math.max(anchorX, ...legitKids.map(k => k.x));
+
+      ctx.strokeStyle = '#8a6820';
+      ctx.lineWidth   = 1 / ftZoom;
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 0.8;
+
+      // If couple: draw stub from couple midpoint down, then over to parent X
+      if(partner){
+        const coupleX = (par.x + partner.x) / 2;
+        const coupleY = (par.y + partner.y) / 2;
+        ctx.beginPath();
+        ctx.moveTo(coupleX, coupleY);
+        ctx.lineTo(coupleX, barY);
+        // Horizontal to align with children spread
+        if(Math.abs(coupleX - anchorX) > 2){
+          ctx.lineTo(anchorX, barY);
+        }
+        ctx.stroke();
+      } else {
+        // No couple: simple vertical drop from parent
+        ctx.beginPath();
+        ctx.moveTo(anchorX, anchorY);
+        ctx.lineTo(anchorX, barY);
+        ctx.stroke();
+      }
+
+      // Horizontal bar spanning all children (always draw to connect offset nodes)
+      const allBarX = partner ? [anchorX, (par.x + partner.x) / 2, ...legitKids.map(k => k.x)]
+                               : [anchorX, ...legitKids.map(k => k.x)];
+      const finalLeft  = Math.min(...allBarX);
+      const finalRight = Math.max(...allBarX);
+      if(finalRight - finalLeft > 1){
+        ctx.beginPath();
+        ctx.moveTo(finalLeft, barY);
+        ctx.lineTo(finalRight, barY);
+        ctx.stroke();
+      }
+
+      // Vertical rise to each child
+      legitKids.forEach(k => {
+        ctx.beginPath();
+        ctx.moveTo(k.x, barY);
+        ctx.lineTo(k.x, k.y - BH/2);
+        ctx.stroke();
+      });
     }
 
-    // Expand indicator on parent nodes (▸ = click to show family)
-    if(n.expandable){
+    // Draw illegitimate children with dashed lines, separately
+    illegKids.forEach(k => {
+      const barY = (anchorY + k.y - BH/2) / 2;
+      ctx.strokeStyle = '#885050';
+      ctx.lineWidth   = 1 / ftZoom;
+      ctx.setLineDash([4/ftZoom, 3/ftZoom]);
+      ctx.globalAlpha = 0.7;
+      ctx.beginPath();
+      ctx.moveTo(anchorX, anchorY);
+      ctx.lineTo(anchorX, barY);
+      ctx.lineTo(k.x, barY);
+      ctx.lineTo(k.x, k.y - BH/2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    });
+  });
+
+  ctx.globalAlpha = 1;
+
+  // ── Nodes ─────────────────────────────────────────────────────
+  ftNodes.forEach(n => {
+    const col = ftColor(n.status, n.pc, n.illegitimate, n.isSpouse);
+    const nx  = n.x - BW/2, ny = n.y - BH/2;
+
+    ctx.globalAlpha = 1;
+
+    // Drop shadow
+    ctx.shadowColor   = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur    = 4 / ftZoom;
+    ctx.shadowOffsetY = 2 / ftZoom;
+
+    // Black box fill
+    ctx.fillStyle   = '#000000';
+    ctx.strokeStyle = col.stroke;
+    ctx.lineWidth   = col.sw / ftZoom;
+    if(col.dash) ctx.setLineDash([3/ftZoom, 2/ftZoom]);
+    ctx.beginPath(); ctx.roundRect(nx, ny, BW, BH, 3);
+    ctx.fill(); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+
+    // Deceased strikethrough — big bold red X
+    if(n.status === 'dead'){
       ctx.save();
-      ctx.font=`bold ${7/ftZoom}px sans-serif`;
-      ctx.fillStyle = n.expanded ? '#80c080' : '#c0a040';
-      ctx.globalAlpha=(dim?0.4:1)*0.9;
-      ctx.textAlign='left';
-      ctx.fillText(n.expanded?'▾':'▸', nx+2, ny+9);
+      ctx.globalAlpha = 0.85;
+      ctx.strokeStyle = '#dd2222';
+      ctx.lineWidth   = 3 / ftZoom;
+      ctx.lineCap     = 'round';
+      ctx.beginPath(); ctx.moveTo(nx+4, ny+4); ctx.lineTo(nx+BW-4, ny+BH-4); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(nx+BW-4, ny+4); ctx.lineTo(nx+4, ny+BH-4); ctx.stroke();
       ctx.restore();
     }
 
     // PC star
     if(n.pc){
-      ctx.font=`bold ${10/ftZoom}px serif`;
-      ctx.fillStyle='#ffd700'; ctx.textAlign='right';
-      ctx.fillText('★',nx+BW-3,ny+11);
+      ctx.font       = `bold 10px serif`;
+      ctx.fillStyle  = '#ffd700';
+      ctx.textAlign  = 'right';
+      ctx.globalAlpha = 1;
+      ctx.fillText('★', nx+BW-3, ny+12);
     }
 
-    // Text — scale font with zoom so it stays crisp
-    const fScale=1/ftZoom;
-    ctx.textAlign='center';
-    ctx.globalAlpha=dim?0.4:n.ghost?0.75:1;
+    ctx.textAlign = 'center';
+    ctx.globalAlpha = 1;
 
-    const nameLines=n.label.split('\n');
-    if(nameLines.length>1){
-      ctx.font=`${7.5*fScale}px Cinzel,serif`; ctx.fillStyle=col.text;
-      ctx.fillText(nameLines[0],n.x,ny+12); ctx.fillText(nameLines[1]||'',n.x,ny+22);
+    // Name (wraps if contains \n)
+    const nameLines = n.label.split('\n');
+    ctx.font      = `${n.pc ? 'bold ' : ''}9px Cinzel,serif`;
+    ctx.fillStyle = col.text;
+    if(nameLines.length > 1){
+      ctx.fillText(nameLines[0], n.x, ny + 13);
+      ctx.fillText(nameLines[1], n.x, ny + 23);
     } else {
-      // Name
-      ctx.font=`${n.pc?'bold ':''  }${9*fScale}px Cinzel,serif`; ctx.fillStyle=col.text;
-      ctx.fillText(n.label,n.x,ny+13);
-      // Role
-      if(n.role&&!n.ghost){
-        ctx.font=`italic ${7*fScale}px serif`;
-        ctx.globalAlpha=(dim?0.4:1)*1.0;   ctx.fillStyle=col.text;
-        ctx.fillText(n.role.split('·')[0].trim().slice(0,20),n.x,ny+23);
-      }
-      // Age/glory
-      const sub=[n.age?'Age '+n.age:'',n.glory?'✦'+n.glory:''].filter(Boolean).join('  ');
-      if(sub){
-        ctx.font=`${6*fScale}px serif`;
-        ctx.globalAlpha=(dim?0.4:1)*0.85;  ctx.fillStyle=col.text;
-        ctx.fillText(sub,n.x,ny+33);
+      ctx.fillText(n.label, n.x, ny + 14);
+      // Role (first part only, truncated)
+      if(n.role){
+        ctx.font        = `italic 7px serif`;
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle   = col.text;
+        ctx.fillText(n.role.split('·')[0].trim().slice(0, 24), n.x, ny + 25);
       }
     }
+    // Age / glory
+    const sub = [n.age ? 'Age '+n.age : '', n.glory ? '✦'+n.glory : ''].filter(Boolean).join('  ');
+    if(sub){
+      ctx.font        = `6px serif`;
+      ctx.globalAlpha = 0.75;
+      ctx.fillStyle   = col.text;
+      ctx.fillText(sub, n.x, ny + 37);
+    }
+
+    ctx.globalAlpha = 1;
   });
 
-  ctx.restore(); // end zoom/pan transform
+  ctx.restore(); // end pan/zoom
 
-  // ── Tooltip — drawn in screen space (outside zoom transform) ──
-  if(ftSelected){
-    ctx.save(); ctx.scale(ftDpr,ftDpr);
-    const n=ftSelected, col=ftColor(n.status,n.pc,n.illegitimate,n.isSpouse);
-    // Compute screen position of node
-    const sx=n.x*ftZoom+ftPanX, sy=n.y*ftZoom+ftPanY;
-    const lines=[
-      n.label,
-      n.role||'',
-      n.age?'Age '+n.age:'',
-      n.glory?'Glory '+n.glory:'',
-      n.status==='dead'?'† Deceased':''
-    ].filter(Boolean);
-    const pw=160,lh=15,pad=9,ph=lines.length*lh+pad*2;
-    const px=Math.min(ftW-pw-8,Math.max(8,sx-pw/2));
-    const py=Math.min(ftH-ph-8,Math.max(8,sy+(BH/2)*ftZoom+6));
-    ctx.globalAlpha=0.95;
-    ctx.fillStyle='#1a1005'; ctx.strokeStyle=col.stroke; ctx.lineWidth=1.5;
-    ctx.shadowColor='rgba(0,0,0,0.7)'; ctx.shadowBlur=8;
-    ctx.beginPath(); ctx.roundRect(px,py,pw,ph,4); ctx.fill(); ctx.stroke();
-    ctx.shadowBlur=0;
-    lines.forEach((l,i)=>{
-      ctx.font=i===0?'bold 10px Cinzel,serif':'8.5px serif';
-      ctx.fillStyle=col.text; ctx.textAlign='left';
-      ctx.globalAlpha=i===0?0.98:0.8;
-      ctx.fillText(l,px+pad,py+pad+11+i*lh);
-    });
-    ctx.restore();
-  }
-
-  // ── Zoom indicator ──
-  ctx.save(); ctx.scale(ftDpr,ftDpr);
-  ctx.font='9px serif'; ctx.fillStyle='rgba(180,160,100,0.45)';
-  ctx.textAlign='right';
+  // Zoom % indicator (screen space)
+  ctx.save(); ctx.scale(ftDpr, ftDpr);
+  ctx.font      = '9px serif';
+  ctx.fillStyle = 'rgba(90,70,30,0.55)';
+  ctx.textAlign = 'right';
   ctx.fillText(Math.round(ftZoom*100)+'%', ftW-8, ftH-6);
   ctx.restore();
 }
 
 function ftZoomBy(delta, cx, cy){
-  // cx,cy: zoom center in screen coords
-  const oldZoom=ftZoom;
-  ftZoom=Math.max(0.3,Math.min(3.5,ftZoom*delta));
-  // Adjust pan so zoom center stays fixed
-  const wx=cx===undefined?ftW/2:cx;
-  const wy=cy===undefined?ftH/2:cy;
-  ftPanX=wx-(wx-ftPanX)*(ftZoom/oldZoom);
-  ftPanY=wy-(wy-ftPanY)*(ftZoom/oldZoom);
+  const oldZoom = ftZoom;
+  ftZoom = Math.max(0.18, Math.min(4, ftZoom * delta));
+  const wx = cx === undefined ? ftW/2 : cx;
+  const wy = cy === undefined ? ftH/2 : cy;
+  ftPanX = wx - (wx - ftPanX) * (ftZoom / oldZoom);
+  ftPanY = wy - (wy - ftPanY) * (ftZoom / oldZoom);
   ftDrawTree();
 }
 
 function ftResetView(){
-  ftZoom=1; ftPanX=0; ftPanY=0; ftDrawTree();
+  ftZoom = 1;
+  const pc = ftNodes.find(n => n.pc);
+  ftPanX = pc ? ftW/2 - pc.x : 40;
+  ftPanY = pc ? Math.max(20, ftH*0.3 - pc.y) : 40;
+  ftDrawTree();
 }
 
 function initFamilyTreeCanvas(charName){
-  ftCanvas=document.getElementById('familyTreeCanvas');
+  ftCanvas = document.getElementById('familyTreeCanvas');
   if(!ftCanvas) return;
-  const cont=ftCanvas.parentElement;
-  ftDpr=window.devicePixelRatio||1;
-  ftW=cont.clientWidth||900;
-  ftH=Math.max(580,Math.round(ftW*0.6));
-  ftCanvas.width=ftW*ftDpr; ftCanvas.height=ftH*ftDpr;
-  ftCanvas.style.width=ftW+'px'; ftCanvas.style.height=ftH+'px';
-  ftCtx=ftCanvas.getContext('2d');
+  const cont = ftCanvas.parentElement;
+  ftDpr = window.devicePixelRatio || 1;
+  ftW   = cont.clientWidth || 900;
+  ftH   = Math.max(800, Math.round(ftW * 0.85));
+  ftCanvas.width        = ftW * ftDpr;
+  ftCanvas.height       = ftH * ftDpr;
+  ftCanvas.style.width  = ftW + 'px';
+  ftCanvas.style.height = ftH + 'px';
+  ftCtx = ftCanvas.getContext('2d');
 
-  // Inject zoom controls above canvas if not already there
-  if(!document.getElementById('ftZoomControls')){
-    const bar=document.createElement('div');
-    bar.id='ftZoomControls';
-    bar.style.cssText='display:flex;gap:6px;align-items:center;padding:6px 10px;background:#0a0a0a;border-bottom:1px solid #333;';
-    bar.innerHTML=`
-      <button onclick="ftZoomBy(1.25)" title="Zoom in" style="background:#111;border:1px solid #555;color:#eee;width:28px;height:28px;border-radius:3px;cursor:pointer;font-size:15px;line-height:1;transition:background .1s">+</button>
-      <button onclick="ftZoomBy(0.8)"  title="Zoom out" style="background:#111;border:1px solid #555;color:#eee;width:28px;height:28px;border-radius:3px;cursor:pointer;font-size:15px;line-height:1;transition:background .1s">−</button>
-      <button onclick="ftResetView()"  title="Reset view" style="background:#111;border:1px solid #555;color:#eee;padding:0 10px;height:28px;border-radius:3px;cursor:pointer;font-size:10px;font-family:Cinzel,serif;letter-spacing:.05em;transition:background .1s">Reset</button>
-      <span style="font-size:9px;color:#888;font-family:serif;margin-left:6px">Scroll to zoom · Drag empty space to pan · Drag nodes to move · Dbl-click to unpin</span>`;
-    cont.insertBefore(bar, ftCanvas);
-  }
+  // Zoom controls — always rebuild (container is re-created on each renderFamily)
+  const oldBar = document.getElementById('ftZoomControls');
+  if(oldBar) oldBar.remove();
+  const bar = document.createElement('div');
+  bar.id = 'ftZoomControls';
+  bar.style.cssText = 'display:flex;gap:6px;align-items:center;padding:6px 10px;background:#e8d5b0;border-bottom:1px solid #c9b48a;';
+  bar.innerHTML = `
+    <button onclick="ftZoomBy(1.25)" style="background:#f5ead6;border:1px solid #c9b48a;color:#3a2008;width:28px;height:28px;border-radius:3px;cursor:pointer;font-size:15px;line-height:1;font-weight:bold">+</button>
+    <button onclick="ftZoomBy(0.8)"  style="background:#f5ead6;border:1px solid #c9b48a;color:#3a2008;width:28px;height:28px;border-radius:3px;cursor:pointer;font-size:15px;line-height:1;font-weight:bold">−</button>
+    <button onclick="ftResetView()"  style="background:#f5ead6;border:1px solid #c9b48a;color:#3a2008;padding:0 10px;height:28px;border-radius:3px;cursor:pointer;font-size:10px;font-family:Cinzel,serif;letter-spacing:.05em">Reset</button>
+    <span style="font-size:9px;color:#5a4a2a;font-family:serif;margin-left:6px">Scroll to zoom · Drag to pan</span>`;
+  cont.insertBefore(bar, ftCanvas);
 
   buildFamilyTree(charName);
 
-  // ── Coordinate helpers ──
-  function scrPos(e){
-    const r=ftCanvas.getBoundingClientRect();
-    const cl=e.touches?e.touches[0]:e;
-    return {x:(cl.clientX-r.left)*(ftW/r.width), y:(cl.clientY-r.top)*(ftH/r.height)};
+  // Helper: canvas-relative coords accounting for CSS scaling
+  function canvasXY(clientX, clientY){
+    const r = ftCanvas.getBoundingClientRect();
+    return {
+      x: (clientX - r.left) * (ftW / r.width),
+      y: (clientY - r.top)  * (ftH / r.height)
+    };
   }
-  function worldPos(e){ const s=scrPos(e); return ftScreen2World(s.x,s.y); }
-  function hitNode(wx,wy){ return ftNodes.slice().reverse().find(n=>Math.abs(n.x-wx)<BW/2+2&&Math.abs(n.y-wy)<BH/2+2); }
 
-  // ── Scroll to zoom ──
-  ftCanvas.addEventListener('wheel', e=>{
+  // Scroll to zoom
+  ftCanvas.addEventListener('wheel', e => {
     e.preventDefault();
-    const {x,y}=scrPos(e);
-    ftZoomBy(e.deltaY<0?1.12:1/1.12, x, y);
-  },{passive:false});
+    const {x, y} = canvasXY(e.clientX, e.clientY);
+    ftZoomBy(e.deltaY < 0 ? 1.12 : 1/1.12, x, y);
+  }, {passive: false});
 
-  // ── Mouse ──
-  let mouseBtn=0, _mouseDownPos=null;
-  ftCanvas.addEventListener('mousedown', e=>{
-    mouseBtn=e.button;
-    const {x,y}=scrPos(e);
-    _mouseDownPos={x,y};
-    if(e.button===1||e.button===2){ // middle or right drag = pan
-      ftPanning=true; ftPanStart={x:x-ftPanX, y:y-ftPanY};
-      ftCanvas.style.cursor='move'; e.preventDefault(); return;
-    }
-    const {x:wx,y:wy}=ftScreen2World(x,y);
-    const n=hitNode(wx,wy);
-    if(n){
-      ftDrag={node:n,ox:wx-n.x,oy:wy-n.y};
-      ftSelected=n; ftCanvas.style.cursor='grabbing';
-    } else {
-      // left-click on empty space = pan
-      ftPanning=true; ftPanStart={x:x-ftPanX, y:y-ftPanY};
-      ftCanvas.style.cursor='move';
-      ftSelected=null;
-    }
+  // Mouse pan
+  ftCanvas.addEventListener('mousedown', e => {
+    e.preventDefault();
+    ftPanning = true;
+    const {x, y} = canvasXY(e.clientX, e.clientY);
+    ftPanStart = {x: x - ftPanX, y: y - ftPanY};
+    ftCanvas.style.cursor = 'grabbing';
+  });
+  ftCanvas.addEventListener('mousemove', e => {
+    if(!ftPanning) return;
+    const {x, y} = canvasXY(e.clientX, e.clientY);
+    ftPanX = x - ftPanStart.x;
+    ftPanY = y - ftPanStart.y;
     ftDrawTree();
   });
-  ftCanvas.addEventListener('mousemove', e=>{
-    const {x,y}=scrPos(e);
-    if(ftPanning&&ftPanStart){ ftPanX=x-ftPanStart.x; ftPanY=y-ftPanStart.y; ftDrawTree(); return; }
-    if(!ftDrag) return;
-    const {x:wx,y:wy}=ftScreen2World(x,y);
-    ftDrag.node.x=wx-ftDrag.ox; ftDrag.node.y=wy-ftDrag.oy; ftDrawTree();
-  });
-  ftCanvas.addEventListener('mouseup', e=>{
-    if(ftPanning){ ftPanning=false; ftPanStart=null; ftCanvas.style.cursor='grab'; return; }
-    if(ftDrag){
-      const {x,y}=scrPos(e);
-      const moved = _mouseDownPos ? Math.hypot(x-_mouseDownPos.x, y-_mouseDownPos.y) : 99;
-      const n=ftDrag.node;
-      ftDrag=null; ftCanvas.style.cursor='grab';
-      // If barely moved = click, toggle expand on parent nodes
-      if(moved < 5 && n.expandable){
-        if(ftExpanded.has(n.id)) ftExpanded.delete(n.id);
-        else ftExpanded.add(n.id);
-        buildFamilyTree(charName);
-      }
-    }
-  });
-  ftCanvas.addEventListener('mouseleave',()=>{ ftDrag=null; ftPanning=false; ftCanvas.style.cursor='grab'; });
-  ftCanvas.addEventListener('contextmenu',e=>e.preventDefault());
-  ftCanvas.addEventListener('dblclick',e=>{
-    const {x,y}=scrPos(e), {x:wx,y:wy}=ftScreen2World(x,y);
-    const n=hitNode(wx,wy);
-    if(n){ ftDrawTree(); }
-  });
+  ftCanvas.addEventListener('mouseup',    () => { ftPanning = false; ftCanvas.style.cursor = 'grab'; });
+  ftCanvas.addEventListener('mouseleave', () => { ftPanning = false; ftCanvas.style.cursor = 'grab'; });
 
-  // ── Touch ──
-  let lastTouchDist=0;
-  ftCanvas.addEventListener('touchstart',e=>{
+  // Touch pan + pinch zoom
+  let lastTouchDist = 0;
+  ftCanvas.addEventListener('touchstart', e => {
     e.preventDefault();
-    if(e.touches.length===2){
-      lastTouchDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
-      ftDrag=null; return;
+    if(e.touches.length === 2){
+      lastTouchDist = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+    } else {
+      ftPanning = true;
+      const {x, y} = canvasXY(e.touches[0].clientX, e.touches[0].clientY);
+      ftPanStart = {x: x - ftPanX, y: y - ftPanY};
     }
-    const {x:wx,y:wy}=worldPos(e);
-    const n=hitNode(wx,wy);
-    if(n){ftDrag={node:n,ox:wx-n.x,oy:wy-n.y};ftSelected=n;ftDrawTree();}
-  },{passive:false});
-  ftCanvas.addEventListener('touchmove',e=>{
+  }, {passive:false});
+  ftCanvas.addEventListener('touchmove', e => {
     e.preventDefault();
-    if(e.touches.length===2){
-      const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
-      if(lastTouchDist) ftZoomBy(d/lastTouchDist);
-      lastTouchDist=d; return;
+    if(e.touches.length === 2){
+      const d = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+      if(lastTouchDist) ftZoomBy(d / lastTouchDist);
+      lastTouchDist = d;
+    } else if(ftPanning){
+      const {x, y} = canvasXY(e.touches[0].clientX, e.touches[0].clientY);
+      ftPanX = x - ftPanStart.x;
+      ftPanY = y - ftPanStart.y;
+      ftDrawTree();
     }
-    if(!ftDrag) return;
-    const {x:wx,y:wy}=worldPos(e);
-    ftDrag.node.x=wx-ftDrag.ox; ftDrag.node.y=wy-ftDrag.oy; ftDrawTree();
-  },{passive:false});
-  ftCanvas.addEventListener('touchend',()=>{
-    if(ftDrag){ftDrag=null;} lastTouchDist=0;
-  });
+  }, {passive:false});
+  ftCanvas.addEventListener('touchend', () => { ftPanning = false; lastTouchDist = 0; });
 }
+
 
 function renderFamilyRoster(charName) {
   const members = FAMILIES[charName] || [];
@@ -1331,7 +1547,7 @@ function renderFamily(){
   const subTabs = `
     <div style="display:flex;gap:.5rem;padding:.7rem 1.4rem;border-bottom:1px solid var(--parchment-shadow);background:rgba(0,0,0,.15)">
       <button onclick="familySubTab='roster';renderFamily()" style="font-family:'Cinzel',serif;font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;padding:.3rem .8rem;border-radius:2px;border:1px solid;cursor:pointer;transition:all .15s;background:${familySubTab==='roster'?'#2a1a06':'rgba(0,0,0,.06)'};color:${familySubTab==='roster'?'#f0cc60':'#3a2008'};border-color:${familySubTab==='roster'?'var(--gold)':'#9a7a4a'}">📋 List</button>
-      <button onclick="familySubTab='tree';renderFamily();setTimeout(()=>{ftExpanded=new Set();initFamilyTreeCanvas(activeFamilyTab);},0)" style="font-family:'Cinzel',serif;font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;padding:.3rem .8rem;border-radius:2px;border:1px solid;cursor:pointer;transition:all .15s;background:${familySubTab==='tree'?'#2a1a06':'rgba(0,0,0,.06)'};color:${familySubTab==='tree'?'#f0cc60':'#3a2008'};border-color:${familySubTab==='tree'?'var(--gold)':'#9a7a4a'}">🌿 Family Tree</button>
+      <button onclick="familySubTab='tree';renderFamily();setTimeout(()=>{initFamilyTreeCanvas(activeFamilyTab);},0)" style="font-family:'Cinzel',serif;font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;padding:.3rem .8rem;border-radius:2px;border:1px solid;cursor:pointer;transition:all .15s;background:${familySubTab==='tree'?'#2a1a06':'rgba(0,0,0,.06)'};color:${familySubTab==='tree'?'#f0cc60':'#3a2008'};border-color:${familySubTab==='tree'?'var(--gold)':'#9a7a4a'}">🌿 Family Tree</button>
       <button onclick="familySubTab='entourage';renderFamily()" style="font-family:'Cinzel',serif;font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;padding:.3rem .8rem;border-radius:2px;border:1px solid;cursor:pointer;transition:all .15s;background:${familySubTab==='entourage'?'#1a1206':'rgba(0,0,0,.06)'};color:${familySubTab==='entourage'?'#e0c878':'#3a2008'};border-color:${familySubTab==='entourage'?'#c8a84a':'#9a7a4a'}">🏕 Household</button>
       
     </div>`;
@@ -1340,10 +1556,11 @@ function renderFamily(){
   if (familySubTab === 'tree') {
     const legend = `<div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;font-family:'Cinzel',serif;font-size:.62rem;letter-spacing:.08em;color:var(--steel)">
       <span><span style="display:inline-block;width:10px;height:10px;background:#3a1a00;border:2px solid #d4a017;border-radius:1px;vertical-align:middle;margin-right:4px"></span>★ Player Character</span>
-      <span><span style="display:inline-block;width:10px;height:10px;background:#0d0a18;border:1.5px solid #a090d0;border-radius:1px;vertical-align:middle;margin-right:4px"></span>Wife</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:#0d0a18;border:1.5px solid #a090d0;border-radius:1px;vertical-align:middle;margin-right:4px"></span>Wife / Spouse</span>
+      <span><span style="display:inline-block;width:14px;height:3px;background:#d4a040;border-radius:1px;vertical-align:middle;margin-right:4px"></span>Marriage</span>
       <span><span style="display:inline-block;width:10px;height:10px;background:#1e1408;border:1px solid #8b6914;border-radius:1px;vertical-align:middle;margin-right:4px"></span>Alive</span>
-      <span><span style="display:inline-block;width:10px;height:10px;background:#1a0808;border:1px solid #5a2020;border-radius:1px;vertical-align:middle;margin-right:4px"></span>Deceased</span>
-      <span style="color:#c0a040">▸ Click a parent to reveal their siblings</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:#1a0808;border:1px solid #5a2020;border-radius:1px;vertical-align:middle;margin-right:4px"></span>✕ Deceased</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:#000;border:1px dashed #885050;border-radius:1px;vertical-align:middle;margin-right:4px"></span>Illegitimate</span>
     </div>`;
 
     const entourage = TREE_DATA[activeFamilyTab]?.entourage || [];
@@ -1362,7 +1579,7 @@ function renderFamily(){
         </div>`;
       }).join('');
       extraSections += `<div style="margin-top:1.4rem">
-        <div style="font-family:'Cinzel',serif;font-size:.65rem;letter-spacing:.14em;text-transform:uppercase;color:var(--steel);margin-bottom:.6rem">Household & Entourage</div>
+        <div style="font-family:'Cinzel',serif;font-size:.65rem;letter-spacing:.14em;text-transform:uppercase;color:var(--steel);margin-bottom:.6rem">Entourage</div>
         <div style="display:flex;flex-wrap:wrap;gap:.6rem">${cards}</div>
       </div>`;
     }
@@ -1379,6 +1596,8 @@ function renderFamily(){
     }
 
     content = `<canvas id="familyTreeCanvas" style="width:100%;display:block;cursor:grab;border-radius:4px;min-height:560px"></canvas>${legend}${extraSections}`;
+  } else if (familySubTab === 'roster') {
+    content = renderFamilyRoster(activeFamilyTab);
   } else if (familySubTab === 'entourage') {
     const ent = TREE_DATA[activeFamilyTab]?.entourage || [];
     if (!ent.length) {
@@ -1396,8 +1615,6 @@ function renderFamily(){
       }).join('');
       content = `<div style="display:flex;flex-wrap:wrap;gap:.8rem;padding:.3rem 0">${cards}</div>`;
     }
-  } else {
-    content = renderFamilyRoster(activeFamilyTab);
   }
 
   panel.innerHTML = `<div class="family-section">
@@ -1409,7 +1626,7 @@ function renderFamily(){
     </div>
   </div>`;
 
-  if(familySubTab==='tree') setTimeout(()=>{ftExpanded=new Set();initFamilyTreeCanvas(activeFamilyTab);}, 0);
+  if(familySubTab==='tree') setTimeout(()=>{initFamilyTreeCanvas(activeFamilyTab);}, 0);
 }
 
 // ─── MAIN RENDER ───
@@ -1477,7 +1694,7 @@ let RELATIONS = (()=>{
   if(saved) try { return JSON.parse(saved); } catch(e){}
   return [
     // ── Uther's Court internal
-    {id:'r1',  a:'King Uther Pendragon', b:'Gorlois',           type:'hostile', scope:['political','personal'], label:'Ancient rivalry; Gorlois refuses Uther\'s authority'},
+    {id:'r1',  a:'King Uther Pendragon',  b:'Gorlois',              type:'hostile', scope:['political','personal'], label:'Uther covets Ygraine; open rivalry threatens war. In 488 Uther calls Gorlois \'the primary culprit\' and Cornwall snubbed the summons to France — escalating fast.'},
     {id:'r2',  a:'King Uther Pendragon', b:'Merlin the Magician', type:'ally',   scope:['political','plot'],     label:'Uther relies on Merlin\'s counsel and magic'},
     {id:'r3',  a:'King Uther Pendragon', b:'Ulfius',            type:'ally',    scope:['political'],            label:'Ulfius is Uther\'s most loyal duke'},
     {id:'r4',  a:'King Uther Pendragon', b:'Prince Madoc',      type:'ally',    scope:['political','personal'], label:'Madoc is Uther\'s heir and champion'},
@@ -1497,30 +1714,30 @@ let RELATIONS = (()=>{
     // ── Saxon threat
     {id:'r16', a:'King Aelle',           b:'King Uther Pendragon', type:'hostile', scope:['political'],         label:'Aelle leads the Saxon Shore against British kings'},
     {id:'r17', a:'King Aelle',           b:'Count Roderick',    type:'hostile', scope:['political'],            label:'Saxon raids threaten Salisbury\'s eastern borders'},
-    {id:'r18', a:'Sygarius',             b:'King Uther Pendragon', type:'complex',  scope:['political'],                      label:'Frankish exile seeks British alliance against Clovis; complex after Madoc betrayal'},
+    {id:'r18', a:'Sygarius',              b:'King Uther Pendragon', type:'complex', scope:['political'],            label:'Frankish exile seeks British alliance; in 488 Syagrius knelt before Madoc begging to march on Rouen — refused. His enemy King Claudas has never lost a battle.'},
     // ── Estragales
-    {id:'r19', a:'Canan',                b:'Count Roderick',    type:'ally',    scope:['political'],            label:'Estragales and Salisbury maintain cautious friendship'},
-    {id:'r20', a:'Leget',                b:'Canan',             type:'rival',   scope:['political'],            label:'Hill tribe leader chafes under Estragales authority'},
-    {id:'r21', a:'Lunet',                b:'Gwegon',            type:'love',    scope:['personal','affairs'],             label:'Lunet is a love interest of Gwegon (PC)'},
+    {id:'r19', a:'Canan',                 b:'Count Roderick',       type:'ally',    scope:['political'],            label:'Estragales and Salisbury maintain cautious friendship'},
+    {id:'r20', a:'Leget',                 b:'Canan',                type:'rival',   scope:['political'],            label:'Hill tribe leader chafes under Estragales authority'},
+    {id:'r21', a:'Lunet',                 b:'Gwegon',               type:'love',    scope:['personal'],             label:'Lunet is a love interest of Gwegon (PC)'},
     // ── Other nobles
-    {id:'r22', a:'Cadwy',                b:'King Uther Pendragon', type:'vassal', scope:['political'],          label:'Cadwy of Summerset owes nominal fealty'},
-    {id:'r23', a:'Melwas',               b:'Cadwy',             type:'rival',   scope:['political'],            label:'Melwas\' great glory overshadows Cadwy\'s authority'},
-    {id:'r24', a:'Corneus',              b:'King Uther Pendragon', type:'vassal', scope:['political'],          label:'Duke of Lindsey, loyal vassal'},
-    {id:'r25', a:'Heraut de Aupres',     b:'King Uther Pendragon', type:'rival', scope:['political'],           label:'Malahaut\'s king styles himself a Roman and disputes Uther\'s supremacy'},
+    {id:'r22', a:'Cadwy',                 b:'King Uther Pendragon', type:'vassal',  scope:['political'],            label:'Cadwy of Summerset owes nominal fealty'},
+    {id:'r23', a:'Melwas',                b:'Cadwy',                type:'rival',   scope:['political'],            label:'Melwas\' great glory overshadows Cadwy\'s authority'},
+    {id:'r24', a:'Corneus',               b:'King Uther Pendragon', type:'vassal',  scope:['political'],            label:'Duke of Lindsey, loyal vassal'},
+    {id:'r25', a:'Heraut de Aupres',      b:'King Uther Pendragon', type:'rival',   scope:['political'],            label:'Malahaut disputes Uther\'s supremacy as a self-styled Roman'},
     // ── Merlin schemes
-    {id:'r26', a:'Merlin the Magician',  b:'King Uther Pendragon', type:'scheme', scope:['plot'],              label:'Merlin serves Uther but pursues his own mysterious agenda'},
-    {id:'r27', a:'Merlin the Magician',   b:'Gorlois',             type:'scheme', scope:['plot'],              label:'Merlin watches Gorlois closely — his reasons are unclear'},
+    {id:'r26', a:'Merlin the Magician',   b:'King Uther Pendragon', type:'scheme',  scope:['plot'],                 label:'Merlin has a long-term plan that uses Uther as a means to an end'},
+    {id:'r27', a:'Merlin the Magician',   b:'Gorlois',              type:'scheme',  scope:['plot'],                 label:'Merlin needs Gorlois out of the way for his plan'},
     // ── PC connections
-    {id:'r28', a:'Count Roderick',       b:'Agragan',           type:'vassal',  scope:['political','affairs'],            label:'PC Agragan holds lands under Roderick'},
-    {id:'r29', a:'Count Roderick',       b:'Rhydian',           type:'vassal',  scope:['political','affairs'],            label:'PC Rhydian holds lands under Roderick'},
-    {id:'r30', a:'Count Roderick',       b:'Gwegon',            type:'vassal',  scope:['political','affairs'],            label:'PC Gwegon holds lands under Roderick'},
-    {id:'r31', a:'Count Roderick',       b:'Timotheus',         type:'vassal',  scope:['political','affairs'],            label:'PC Timotheus holds lands under Roderick'},
-    {id:'r32', a:'Sir Elad',             b:'Agragan',           type:'ally',    scope:['personal','affairs'],             label:'Elad mentors and respects Agragan'},
-    {id:'r33', a:'Aeron',                b:'Timotheus',         type:'ally',    scope:['personal','affairs'],             label:'Aeron and Timotheus are both knights of Salisbury'},
-    {id:'r34', a:'Sygarius',             b:'Prince Madoc',      type:'hostile', scope:['political'],                      label:'Madoc betrayed Sygarius in Normandy — now bitter enemies'},
-
-  {id:'r35', a:'Sygarius',     b:'King Uther Pendragon', type:'hostile', scope:['political'],         label:'Relations worsened sharply after Madoc betrayal in Normandy'},
-  {id:'r36', a:'Syr Ricerch',  b:'Gwegon',               type:'rival',   scope:['personal','affairs'], label:'Syr Ricerch holds grudge — Gwegon gave his manor to his brother'},
+    {id:'r28', a:'Count Roderick',        b:'Agragan',              type:'vassal',  scope:['political','affairs'],  label:'PC Agragan holds lands under Roderick'},
+    {id:'r29', a:'Count Roderick',        b:'Rhydian',              type:'vassal',  scope:['political','affairs'],  label:'PC Rhydian holds lands under Roderick'},
+    {id:'r30', a:'Count Roderick',        b:'Gwegon',               type:'vassal',  scope:['political','affairs'],  label:'PC Gwegon holds lands under Roderick'},
+    {id:'r31', a:'Count Roderick',        b:'Timotheus',            type:'vassal',  scope:['political','affairs'],  label:'PC Timotheus holds lands under Roderick'},
+    {id:'r32', a:'Sir Elad',              b:'Agragan',              type:'ally',    scope:['personal','affairs'],   label:'Elad mentors and respects Agragan'},
+    // ── 488 developments
+    {id:'r33', a:'Prince Madoc',          b:'Sygarius',             type:'rival',   scope:['political'],            label:'Madoc refused Syagrius\'s plea to march on Rouen in 488; diplomatic rift forming'},
+    {id:'r34', a:'King Uther Pendragon',  b:'Lot',                  type:'rival',   scope:['political'],            label:'Lot avoided battle in the north in 488; Uther is aware and suspicious of his loyalty'},
+    {id:'r35', a:'King Uther Pendragon',  b:'King Claudas',         type:'hostile', scope:['political','military'], label:'Britain\'s 488 campaign in Frankland is directed against Claudas\'s forces; a formidable enemy who has never lost a battle'},
+    {id:'r36', a:'Count Roderick',        b:'Mellyr',               type:'vassal',  scope:['political','affairs'],  label:'PC Mellyr holds Newton Tony under Roderick'},
   ];
 })();
 
@@ -1553,7 +1770,7 @@ const FACTION_NODE_COLORS = {
 };
 
 // ── Player characters — names must match NPC data ──
-const PC_NAMES = ['Agragan','Rhydian','Gwegon','Timotheus'];
+const PC_NAMES = ['Agragan','Rhydian','Gwegon','Timotheus','Mellyr'];
 
 // ─── RELATIONS SECTION ───────────────────────────────────────────────────────
 let webInitialized = false;
@@ -1703,7 +1920,6 @@ function renderConflicts(){
       ]},
       {name:'Count Roderick',role:'Count of Salisbury',    glory:'8,840',  homage:20,  highlight:true, knights:[
         {name:'Sir Elad',       role:'Marshall of Salisbury',  glory:'4,890'},
-        {name:'Sir Blains',     role:'Baron of Silchester',    glory:'3,120'},
         {name:'Sir Duach',      role:'Baron of Wereside',      glory:'—'},
       ]},
       {name:'Lady Elin',     role:'Countess of Rydychan',  glory:'3,900',  homage:null, knights:[
@@ -1742,7 +1958,7 @@ function renderConflicts(){
       const borderCol = tier==='king'?'#b8902a': tier==='vassal'&&n.highlight?'#b8902a': tier==='baron'?'#4a4a6a': tier==='indep'?'#4a6a4a':'#6a5a3a';
       const bg        = '#000000';
       const nameCol   = tier==='king'?'var(--gold-light)': tier==='vassal'&&n.highlight?'var(--gold-light)': tier==='baron'?'#a0a0d0': tier==='indep'?'#90c090':'#e8c090';
-      const clickAttr = hasKnights ? `onclick="window.vassalExpanded.has('${n.name}')?window.vassalExpanded.delete('${n.name}'):window.vassalExpanded.add('${n.name}');renderConflicts()" style="cursor:pointer;" ` : '';
+      const clickAttr = hasKnights ? `onclick="window.vassalExpanded.has('${n.name}')?window.vassalExpanded.delete('${n.name}'):window.vassalExpanded.add('${n.name}');renderConflicts()" ` : '';
       const expandIndicator = hasKnights ? `<span style="float:right;font-size:.65rem;color:#b8902a;opacity:.7">${isExpanded?'▾':'▸'}</span>` : '';
 
       let knightsHtml = '';
@@ -1751,19 +1967,19 @@ function renderConflicts(){
           ${n.knights.map(k=>`<div style="display:flex;justify-content:space-between;align-items:baseline;padding:.15rem 0;border-bottom:1px solid rgba(255,255,255,.04)">
             <div>
               <span style="font-family:'Cinzel',serif;font-size:.7rem;color:#c8b070">${k.name}</span>
-              <span style="font-size:.62rem;color:#6a5a3a;font-style:italic;margin-left:.3rem">${k.role}</span>
+              <span style="font-size:.62rem;color:#a89878;font-style:italic;margin-left:.3rem">${k.role}</span>
             </div>
-            ${k.glory&&k.glory!=='—'?`<span style="font-size:.62rem;color:#5a4a2a">${k.glory}</span>`:''}
+            ${k.glory&&k.glory!=='—'?`<span style="font-size:.62rem;color:#a89868">${k.glory}</span>`:''}
           </div>`).join('')}
         </div>`;
       }
 
-      return `<div ${clickAttr}style="background:${bg};border:1px solid ${borderCol};border-left:3px solid ${borderCol};border-radius:3px;padding:.6rem .9rem;min-width:160px;flex:1;max-width:240px${hasKnights?';transition:box-shadow .15s':''}${hasKnights&&!isExpanded?';opacity:.95':''}">
+      return `<div ${clickAttr}style="background:${bg};border:1px solid ${borderCol};border-left:3px solid ${borderCol};border-radius:3px;padding:.6rem .9rem;min-width:160px;flex:1;max-width:240px${hasKnights?';cursor:pointer;transition:box-shadow .15s':''}${hasKnights&&!isExpanded?';opacity:.95':''}">
         <div style="font-family:'Cinzel',serif;font-size:.82rem;font-weight:${n.highlight?'700':'400'};color:${nameCol};line-height:1.2">${expandIndicator}${n.name}</div>
-        <div style="font-size:.7rem;color:#9a8a6a;font-style:italic;margin-top:.1rem">${n.role}</div>
-        ${tier!=='baron'?`<div style="font-size:.67rem;color:#6a5a4a;margin-top:.1rem">${n.glory} Glory</div>`:''}
+        <div style="font-size:.7rem;color:#c8b898;font-style:italic;margin-top:.1rem">${n.role}</div>
+        ${tier!=='baron'?`<div style="font-size:.67rem;color:#a89868;margin-top:.1rem">${n.glory} Glory</div>`:''}
         ${n.homage!=null?`<div style="font-size:.67rem;margin-top:.2rem;color:${homageColor(n.homage)}">Homage (Uther) <strong>${n.homage}</strong></div>`:''}
-        ${n.note?`<div style="font-size:.65rem;color:#8a7a6a;margin-top:.18rem;font-style:italic">${n.note}</div>`:''}
+        ${n.note?`<div style="font-size:.65rem;color:#b8a888;margin-top:.18rem;font-style:italic">${n.note}</div>`:''}
         ${knightsHtml}
       </div>`;
     }
@@ -1772,12 +1988,18 @@ function renderConflicts(){
 
     // Enfeoffed manor holders under PCs
     const enfeoffed = {
-      Agragan:   [{manor:'Horton',     holder:'Sir Rhodri',  note:'Knight (just but cruel)'},
-                  {manor:'Tisbury',    holder:'Sir Tarthan', note:'Knight (enfeoffed)'}],
-      Gwegon:    [{manor:'Shrewton',   holder:'Sir Marchlew',note:'Owes military service'}],
-      Timotheus: [{manor:'Tidcombe',   holder:'—',           note:'Held directly'},
-                  {manor:'Fosbury',    holder:'—',           note:'Held directly'}],
+      Agragan:   [{manor:'Horton',     holder:'Sir Rodri',   note:'Demesne manor'},
+                  {manor:'Tisbury',    holder:'Sir Tartan',  note:'Enfeoffed manor'}],
+      Gwegon:    [{manor:'Shrewton',   holder:'Sir Marchlew',note:'Enfeoffed manor'},
+                  {manor:'Allington',  holder:'Sir Clydno',  note:'Demesne manor'}],
+      Timotheus: [{manor:'Tidcombe',   holder:'Syr Cynwal',  note:'Enfeoffed manor'},
+                  {manor:'Fosbury',    holder:'Syr Gwair',   note:'Enfeoffed manor'}],
       Rhydian:   [],
+      Mellyr:    [],
+    };
+    const pcManors = {
+      Agragan:'Cholderton', Rhydian:'Stapleford', Gwegon:'Broughton',
+      Timotheus:'Laverstock', Mellyr:'Newton Tony'
     };
     const pcCards = PC_NAMES.map(name=>{
       const ef = enfeoffed[name]||[];
@@ -1786,7 +2008,7 @@ function renderConflicts(){
       </div>` : '';
       return `<div style="background:#000000;border:2px solid var(--gold);border-radius:3px;padding:.65rem .9rem;min-width:130px;flex:1">
         <div style="font-family:'Cinzel',serif;font-size:.85rem;color:var(--gold-light);font-weight:700">${name}</div>
-        <div style="font-size:.7rem;color:#c9b48a;font-style:italic;margin-top:.08rem">PC Knight of Salisbury</div>
+        <div style="font-size:.7rem;color:#c9b48a;font-style:italic;margin-top:.08rem">PC Knight · ${pcManors[name]||'Salisbury'}</div>
         <div style="font-size:.64rem;color:var(--gold);margin-top:.22rem">⚔ Player Character</div>
         ${efHtml}
       </div>`;
@@ -1813,6 +2035,22 @@ function renderConflicts(){
       <!-- PCs -->
       <div style="font-family:'Cinzel',serif;font-size:.55rem;letter-spacing:.14em;color:var(--gold);text-transform:uppercase;text-align:center;margin-bottom:.35rem">Player Knights of Salisbury</div>
       <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:center">${pcCards}</div>
+      ${vLine('#6a5a2a')}
+      <!-- Sworn Swords -->
+      <div style="font-family:'Cinzel',serif;font-size:.55rem;letter-spacing:.14em;color:#c8a850;text-transform:uppercase;text-align:center;margin-bottom:.35rem">Sworn Swords & Manor-Holders</div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:center">
+        ${PC_NAMES.map(name => {
+          const ef = enfeoffed[name]||[];
+          if(!ef.filter(e=>e.holder).length) return '';
+          return ef.filter(e=>e.holder && e.note && e.note.includes('Enfeoffed')).map(e=>
+            `<div style="background:#000000;border:1px solid #5a4a2a;border-left:3px solid #8a7030;border-radius:3px;padding:.5rem .8rem;min-width:140px;max-width:200px;flex:1">
+              <div style="font-family:'Cinzel',serif;font-size:.76rem;color:#d8c070">${e.holder}</div>
+              <div style="font-size:.66rem;color:#9a8a5a;font-style:italic;margin-top:.08rem">🏡 ${e.manor}</div>
+              <div style="font-size:.6rem;color:#7a6a3a;margin-top:.15rem">↑ sworn to <strong style="color:#c8a850">${name}</strong></div>
+            </div>`
+          ).join('');
+        }).join('')}
+      </div>
       <!-- Independent Kings -->
       <div style="margin-top:1.4rem;padding-top:1rem;border-top:1px solid var(--parchment-shadow)">
         <div style="font-family:'Cinzel',serif;font-size:.55rem;letter-spacing:.14em;color:#7a9a7a;text-transform:uppercase;text-align:center;margin-bottom:.35rem">Independent Kings</div>
@@ -1875,14 +2113,14 @@ function renderConflicts(){
         </div>
         <div style="display:flex;gap:.5rem;flex-wrap:wrap">
           ${grouped[g].map(r=>`
-          <div style="background:${m.bg};border:1px solid ${m.border}55;border-left:3px solid ${m.border};border-radius:3px;padding:.6rem .9rem;min-width:180px;flex:1;max-width:280px${r.pc?';box-shadow:0 0 8px '+m.border+'44':''}">
+          <div style="background:#000000;border:1px solid ${m.border}55;border-left:3px solid ${m.border};border-radius:3px;padding:.6rem .9rem;min-width:180px;flex:1;max-width:280px${r.pc?';box-shadow:0 0 8px '+m.border+'44':''}">
             <div style="display:flex;align-items:baseline;gap:.4rem">
               <span style="font-size:.7rem;opacity:.7">${tierIcon[r.tier]||''}</span>
               <span style="font-family:'Cinzel',serif;font-size:.82rem;font-weight:${r.pc?'700':'400'};color:${m.nameCol}">${r.name}</span>
             </div>
-            <div style="font-size:.7rem;color:#8a7a6a;font-style:italic;margin-top:.1rem">${r.title}</div>
-            <div style="font-size:.66rem;color:#5a4a3a;margin-top:.12rem">${r.glory.toLocaleString()} Glory</div>
-            ${r.note?`<div style="font-size:.65rem;color:#7a6a5a;margin-top:.2rem;font-style:italic">${r.note}</div>`:''}
+            <div style="font-size:.7rem;color:#c8b898;font-style:italic;margin-top:.1rem">${r.title}</div>
+            <div style="font-size:.66rem;color:#a89868;margin-top:.12rem">${r.glory.toLocaleString()} Glory</div>
+            ${r.note?`<div style="font-size:.65rem;color:#b8a888;margin-top:.2rem;font-style:italic">${r.note}</div>`:''}
           </div>`).join('')}
         </div>
       </div>`;
@@ -2516,8 +2754,8 @@ const MANOR_DATA = {
         type: 'Demesne (via Gwiona)',
         bonus: null,
         improvements: [],
-        knight: 'Sir Rhodri',
-        notes: 'Income: yearly harvest roll − 8£. Sir Rhodri: just but cruel; hard decisions on the border.',
+        knight: 'Sir Rodri',
+        notes: 'Income: yearly harvest roll − 8£.',
         history: []
       },
       {
@@ -2525,33 +2763,1005 @@ const MANOR_DATA = {
         type: 'Enfeoffed (via Gwiona)',
         bonus: null,
         improvements: [],
-        knight: 'Tarthan',
+        knight: 'Sir Tartan',
         notes: 'Owes military service.',
         history: []
+      }
+    ]
+  },
+
+  Mellyr: {
+    pc: 'Mellyr',
+    manors: [
+      {
+        name: 'Newton Tony',
+        type: 'Demesne',
+        bonus: 'Site of a Famous Battle of Faeries',
+        improvements: [],
+        knight: null,
+        notes: 'Home manor.',
+        history: [
+          {year:489, harvest:9, harvestResult:'Regular', stewardship:0, improvIncome:0, income:9, lifestyle:'Normal', lifestyleCost:8, improvMaint:0, family:0, improvBuild:0, misc:0, final:1, notes:''},
+        ]
       }
     ]
   }
 };
 
 let activeEconTab = 'Rhydian';
+let estateSubTab = 'map';
 
+// ── MANOR MAP CONFIG ──────────────────────────────────────────────────────
+// Per-family geographic config: river routing, road type, hall direction,
+// landscape zones, colour tone. Derived from Salisbury regional map.
+const MANOR_MAP_CONFIG = {
+  Mellyr: {
+    manorName: 'Newton Tony',
+    // Bourne runs N→S on the WEST — Newton Tony sits on the east bank
+    river: { enterEdge:'n', enterPct:0.26, exitEdge:'s', exitPct:0.28, width:16, name:'River Bourne', color:'#5888b0' },
+    roads: [
+      { type:'poor', from:[0.45,0.48], to:[0.0,0.48],  name:'Track to Amesbury' },
+      { type:'poor', from:[0.48,0.52], to:[0.48,1.0],   name:'Track to Sarum' },
+    ],
+    hallDir:'sw', tone:'warm', wasteDir:'e',
+    lotCount:10, villageOffset:[0,0],
+  },
+  Agragan: {
+    manorName: 'Cholderton',
+    // Bourne runs N→S on the WEST — Cholderton east bank, upstream of Newton Tony
+    river: { enterEdge:'n', enterPct:0.28, exitEdge:'s', exitPct:0.30, width:14, name:'River Bourne', color:'#5888b0' },
+    roads: [
+      { type:'poor', from:[0.45,0.50], to:[0.0,0.52], name:'Track to Amesbury' },
+    ],
+    hallDir:'sw', tone:'warm', wasteDir:'e',
+    lotCount:9, villageOffset:[-20,10],
+  },
+  Rhydian: {
+    manorName: 'Stapleford',
+    // Wylye runs W→E just SOUTH of the village — village on north bank
+    river: { enterEdge:'w', enterPct:0.68, exitEdge:'e', exitPct:0.70, width:18, name:'River Wylye', color:'#4878a8' },
+    roads: [
+      { type:'good', from:[0.0,0.65], to:[1.0,0.65], name:'Wylye Valley Road' },
+      { type:'poor', from:[0.48,0.52], to:[0.48,0.0], name:'Track to Tilshead' },
+    ],
+    hallDir:'w', tone:'cool', wasteDir:'n',
+    lotCount:10, villageOffset:[10,-10],
+  },
+  Timotheus: {
+    manorName: 'Laverstock',
+    // Avon runs N→S on the WEST — Laverstock on east bank just SE of Sarum
+    river: { enterEdge:'n', enterPct:0.30, exitEdge:'s', exitPct:0.32, width:18, name:'River Avon', color:'#4070a0' },
+    roads: [
+      { type:'good', from:[0.0,0.50], to:[0.44,0.50], name:'Road to Sarum' },
+      { type:'poor', from:[0.44,0.50], to:[0.44,1.0],  name:'Track south' },
+    ],
+    hallDir:'n', tone:'neutral', wasteDir:'e',
+    lotCount:10, villageOffset:[0,0],
+  },
+  Gwegon: {
+    manorName: 'Broughton',
+    // Small stream runs N→S east of village — open downland to west
+    river: { enterEdge:'n', enterPct:0.72, exitEdge:'s', exitPct:0.70, width:12, name:'Broughton Stream', color:'#6090b8' },
+    roads: [
+      { type:'poor', from:[0.0,0.52], to:[0.5,0.52], name:'Track to Sarum' },
+    ],
+    hallDir:'sw', tone:'green', wasteDir:'w',
+    lotCount:9, villageOffset:[15,0],
+  },
+};
+
+// ── MANOR MAP TONE PALETTES ───────────────────────────────────────────────
+const MANOR_TONES = {
+  warm:    { bg:'#e8d4a0', field1:'#d8bc6a', field2:'#ccb060', fallow:'#c8aa50', pasture:'#b8d088', woodland:'#7aaa58', meadow:'#a8c870', waste:'#aca860', village:'#d0ba80', road:'#b09048' },
+  cool:    { bg:'#ddd4c0', field1:'#ccc8a0', field2:'#c0bc90', fallow:'#bab888', pasture:'#a8c880', woodland:'#6a9848', meadow:'#98b868', waste:'#989878', village:'#c8c098', road:'#a09060' },
+  neutral: { bg:'#e4d8b0', field1:'#d4bc68', field2:'#c8b05c', fallow:'#c0a850', pasture:'#b0cc78', woodland:'#70a050', meadow:'#a0c068', waste:'#a8a058', village:'#ccc080', road:'#a89040' },
+  green:   { bg:'#dce4c0', field1:'#c8cc80', field2:'#b8c070', fallow:'#b0b860', pasture:'#a0c870', woodland:'#5a9040', meadow:'#90b860', waste:'#989860', village:'#c0c880', road:'#909840' },
+};
+
+// ── RENDER MANOR MAP SVG ──────────────────────────────────────────────────
+function renderManorMapSVG(charName) {
+  const cfg = MANOR_MAP_CONFIG[charName];
+  if (!cfg) return '<div style="padding:2rem;font-style:italic;color:#3d2a0e">No map config for this manor.</div>';
+  const md = MANOR_DATA[charName];
+  const t = MANOR_TONES[cfg.tone] || MANOR_TONES.warm;
+
+  // Village centre
+  const W=960, H=820;
+  const vx = 480 + (cfg.villageOffset[0]||0);
+  const vy = 390 + (cfg.villageOffset[1]||0);
+
+  // Improvements from manor data → feature symbols on map
+  const homeManor = md ? md.manors[0] : null;
+  const improvements = homeManor ? (homeManor.improvements||[]) : [];
+  const bonus = homeManor ? (homeManor.bonus||'') : '';
+
+  // Build river path — routes around village centre (vx,vy)
+  function riverPath(r) {
+    const edgePt = (edge, pct) => {
+      if (edge==='n') return [pct*W, 0];
+      if (edge==='s') return [pct*W, H];
+      if (edge==='w') return [0, pct*H];
+      if (edge==='e') return [W, pct*H];
+      return [W/2, H/2];
+    };
+    const [x1,y1] = edgePt(r.enterEdge, r.enterPct);
+    const [x2,y2] = edgePt(r.exitEdge,  r.exitPct);
+    // Mid-point of straight path
+    let mx = (x1+x2)/2;
+    let my = (y1+y2)/2;
+    // Push control point away from village by 120px minimum
+    const dx = mx - vx, dy = my - vy;
+    const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+    const minClear = 220;
+    const rdx = x2-x1, rdy = y2-y1;
+    const rlen = Math.sqrt(rdx*rdx + rdy*rdy) || 1;
+    const px = -rdy/rlen, py = rdx/rlen;
+    const side = dist < minClear ? ((dx*px + dy*py) >= 0 ? 1 : -1) : 1;
+    const push = dist < minClear ? (minClear - dist + 100) : 40;
+    // Cubic Bézier: two control points offset in opposite perpendicular directions
+    // giving a natural S-curve meander
+    const cp1x = x1 + rdx*0.3 + px * side * push;
+    const cp1y = y1 + rdy*0.3 + py * side * push;
+    const cp2x = x1 + rdx*0.7 - px * side * push * 0.6;
+    const cp2y = y1 + rdy*0.7 - py * side * push * 0.6;
+    return { path:`M${x1},${y1} C${cp1x},${cp1y} ${cp2x},${cp2y} ${x2},${y2}`, x1,y1,x2,y2,mx:cp1x,my:cp1y };
+  }
+  const rp = riverPath(cfg.river);
+
+  // Road paths — now with name labels
+  function roadSvg(roads) {
+    return roads.map((rd, i) => {
+      const x1=rd.from[0]*W, y1=rd.from[1]*H, x2=rd.to[0]*W, y2=rd.to[1]*H;
+      const dash = rd.type==='good' ? '' : 'stroke-dasharray="10,6"';
+      const w = rd.type==='good' ? 5 : 3;
+      const rid = `${svgId}-road${i}`;
+      // Road name label along the path
+      const nameLabel = rd.name ? `
+        <path id="${rid}" d="M${x1},${y1} L${x2},${y2}" fill="none" stroke="none"/>
+        <text font-family="'IM Fell English',serif" font-style="italic" font-size="10" fill="${t.road}" opacity="0.8">
+          <textPath href="#${rid}" startOffset="20%">${rd.name}</textPath>
+        </text>` : '';
+      return `
+        <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${t.road}" stroke-width="${w+2}" opacity="0.2" stroke-linecap="round"/>
+        <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${t.road}" stroke-width="${w}" opacity="0.6" stroke-linecap="round" ${dash}/>
+        ${nameLabel}`;
+    }).join('');
+  }
+
+  // Feature icons near hall
+  const hallX = cfg.hallDir==='sw' ? vx-160 : cfg.hallDir==='w' ? vx-180 : cfg.hallDir==='n' ? vx-20 : vx+140;
+  const hallY = cfg.hallDir==='sw' ? vy+130 : cfg.hallDir==='w' ? vy+20  : cfg.hallDir==='n' ? vy-160 : vy+80;
+
+  // ── IMPROVEMENT BUILDING ILLUSTRATIONS ──
+  // Each returns SVG for a small illustrated building near the hall.
+  // Buildings are placed in a cluster spreading from hallX+70 onward.
+  // Each gets a data-key="improv-NAME" so the tooltip system picks it up.
+
+  function improvBuilding(imp, x, y, svgId) {
+    const inv = INVESTMENT_DATA[imp] || {};
+    const key = 'improv-' + imp.replace(/[^a-z0-9]/gi,'_');
+    // Tooltip text built from bookkeeping data
+    const tipName = imp;
+    const tipText = [
+      inv.income  ? `Income: ${inv.income}£/yr`  : '',
+      inv.maint   ? `Upkeep: ${inv.maint}£/yr`   : '',
+      inv.cost    ? `Built for: ${inv.cost}£`     : '',
+      inv.notes   ? inv.notes                     : '',
+    ].filter(Boolean).join(' · ');
+
+    // Store tooltip data for JS pickup
+    const dataAttrs = `class="mz" data-char="${charName}" data-key="${key}" data-improv-name="${tipName}" data-improv-text="${tipText.replace(/"/g,'&quot;')}" style="cursor:pointer"`;
+
+    // Pick building shape by improvement type
+    if (imp === 'Dovecote') {
+      return `<g id="${svgId}-${key}" ${dataAttrs}>
+        <text x="${x-6}" y="${y+4}" text-anchor="middle" font-size="26">🏚️</text>
+        <text x="${x+14}" y="${y-8}" text-anchor="middle" font-size="18">🕊️</text>
+        <text x="${x}" y="${y+22}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9" fill="#3a1a06">Dovecote</text>
+      </g>`;
+    }
+    if (imp === 'Scriptorium') {
+      // Stone scriptorium: rectangular building, arched door, small window
+      return `<g id="${svgId}-${key}" ${dataAttrs}>
+        <rect x="${x-18}" y="${y-18}" width="36" height="32" rx="1" fill="#c8b880" stroke="#6a5020" stroke-width="1"/>
+        <polygon points="${x-18},${y-18} ${x+18},${y-18} ${x},${y-34}" fill="#a89060" stroke="#6a5020" stroke-width="0.9"/>
+        <rect x="${x-5}" y="${y+2}" width="10" height="12" rx="1" fill="#3a2010"/>
+        <path d="M${x-5},${y+2} Q${x},${y-2} ${x+5},${y+2}" fill="#2a1808"/>
+        <rect x="${x+6}" y="${y-12}" width="8" height="7" rx="1" fill="#7a9ab0" stroke="#5a6070" stroke-width="0.5" opacity="0.8"/>
+        <line x1="${x-12}" y1="${y-8}" x2="${x-6}" y2="${y-8}" stroke="#5a3010" stroke-width="0.6" opacity="0.5"/>
+        <line x1="${x-12}" y1="${y-4}" x2="${x-6}" y2="${y-4}" stroke="#5a3010" stroke-width="0.6" opacity="0.5"/>
+        <line x1="${x-12}" y1="${y}" x2="${x-6}" y2="${y}" stroke="#5a3010" stroke-width="0.6" opacity="0.5"/>
+        <text x="${x}" y="${y+30}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9" fill="#3a1a06">Scriptorium</text>
+      </g>`;
+    }
+    if (imp === 'Apiary') {
+      // Three beehive skeps on a bench
+      return `<g id="${svgId}-${key}" ${dataAttrs}>
+        <rect x="${x-22}" y="${y+8}" width="44" height="4" rx="1" fill="#9a7030" stroke="#6a4818" stroke-width="0.7"/>
+        <ellipse cx="${x-12}" cy="${y+8}" rx="8" ry="11" fill="#d4a840" stroke="#9a7010" stroke-width="0.8"/>
+        <ellipse cx="${x}" cy="${y+8}" rx="8" ry="12" fill="#c89a30" stroke="#9a7010" stroke-width="0.8"/>
+        <ellipse cx="${x+12}" cy="${y+8}" rx="8" ry="11" fill="#d4a840" stroke="#9a7010" stroke-width="0.8"/>
+        <line x1="${x-18}" y1="${y+2}" x2="${x-6}" y2="${y+2}" stroke="#a07010" stroke-width="0.6"/>
+        <line x1="${x-6}" y1="${y-2}" x2="${x+6}" y2="${y-2}" stroke="#a07010" stroke-width="0.6"/>
+        <line x1="${x+6}" y1="${y+2}" x2="${x+18}" y2="${y+2}" stroke="#a07010" stroke-width="0.6"/>
+        <path d="M${x+18},${y-4} Q${x+24},${y-8} ${x+26},${y-4}" fill="none" stroke="#b8a030" stroke-width="0.7" opacity="0.7"/>
+        <path d="M${x+20},${y-2} Q${x+28},${y-6} ${x+29},${y-1}" fill="none" stroke="#b8a030" stroke-width="0.7" opacity="0.6"/>
+        <text x="${x}" y="${y+26}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9" fill="#3a1a06">Apiary</text>
+      </g>`;
+    }
+    if (imp === 'Brewery' || imp === 'Brewery, Exclusive') {
+      return `<g id="${svgId}-${key}" ${dataAttrs}>
+        <rect x="${x-16}" y="${y-14}" width="32" height="28" rx="1" fill="#b8a060" stroke="#6a5020" stroke-width="1"/>
+        <polygon points="${x-16},${y-14} ${x+16},${y-14} ${x},${y-28}" fill="#a09050" stroke="#6a5020" stroke-width="0.9"/>
+        <ellipse cx="${x-6}" cy="${y+4}" rx="7" ry="9" fill="#7a5030" stroke="#5a3818" stroke-width="0.8"/>
+        <ellipse cx="${x+8}" cy="${y+2}" rx="6" ry="8" fill="#6a4028" stroke="#5a3818" stroke-width="0.8"/>
+        <text x="${x}" y="${y+28}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9" fill="#3a1a06">${imp.includes('Exclusive')?'Excl. ':''} Brewery</text>
+      </g>`;
+    }
+    if (imp === 'Fish Pond') {
+      return `<g id="${svgId}-${key}" ${dataAttrs}>
+        <ellipse cx="${x}" cy="${y}" rx="22" ry="14" fill="#6898b8" stroke="#285878" stroke-width="0.9" opacity="0.85"/>
+        <ellipse cx="${x}" cy="${y}" rx="14" ry="8" fill="none" stroke="#4878a0" stroke-width="0.5" opacity="0.5"/>
+        <path d="M${x-8},${y-2} Q${x-4},${y-6} ${x},${y-2} Q${x+4},${y+2} ${x+8},${y-2}" fill="none" stroke="#2858a0" stroke-width="1" opacity="0.6"/>
+        <text x="${x}" y="${y+26}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9" fill="#3a1a06">Fish Pond</text>
+      </g>`;
+    }
+    if (imp === 'Herb Garden') {
+      return `<g id="${svgId}-${key}" ${dataAttrs}>
+        <rect x="${x-18}" y="${y-8}" width="36" height="20" rx="2" fill="#8a9840" stroke="#5a6820" stroke-width="0.8" fill-opacity="0.5"/>
+        <rect x="${x-16}" y="${y-6}" width="14" height="8" rx="1" fill="#6a8830" stroke="#4a5820" stroke-width="0.6" fill-opacity="0.6"/>
+        <rect x="${x+2}" y="${y-6}" width="14" height="8" rx="1" fill="#7a9838" stroke="#4a5820" stroke-width="0.6" fill-opacity="0.6"/>
+        <line x1="${x}" y1="${y-8}" x2="${x}" y2="${y+12}" stroke="#4a5820" stroke-width="0.7"/>
+        <text x="${x}" y="${y+24}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9" fill="#3a1a06">Herb Garden</text>
+      </g>`;
+    }
+    if (imp === 'Orchard') {
+      return `<g id="${svgId}-${key}" ${dataAttrs}>
+        <ellipse cx="${x-10}" cy="${y-4}" rx="10" ry="12" fill="#5a8830" stroke="#3a6020" stroke-width="0.8"/>
+        <ellipse cx="${x+10}" cy="${y-4}" rx="10" ry="12" fill="#4a7828" stroke="#3a6020" stroke-width="0.8"/>
+        <ellipse cx="${x}" cy="${y-8}" rx="9" ry="11" fill="#508030" stroke="#3a6020" stroke-width="0.8"/>
+        <line x1="${x-10}" y1="${y+8}" x2="${x-10}" y2="${y+16}" stroke="#6a4020" stroke-width="1.2"/>
+        <line x1="${x+10}" y1="${y+8}" x2="${x+10}" y2="${y+16}" stroke="#6a4020" stroke-width="1.2"/>
+        <line x1="${x}" y1="${y+3}" x2="${x}" y2="${y+16}" stroke="#6a4020" stroke-width="1.2"/>
+        <text x="${x}" y="${y+28}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9" fill="#3a1a06">Orchard</text>
+      </g>`;
+    }
+    if (imp === 'Vineyard') {
+      return `<g id="${svgId}-${key}" ${dataAttrs}>
+        <line x1="${x-20}" y1="${y-10}" x2="${x+20}" y2="${y-10}" stroke="#6a4820" stroke-width="0.9"/>
+        <line x1="${x-20}" y1="${y-2}" x2="${x+20}" y2="${y-2}" stroke="#6a4820" stroke-width="0.9"/>
+        <line x1="${x-20}" y1="${y+6}" x2="${x+20}" y2="${y+6}" stroke="#6a4820" stroke-width="0.9"/>
+        <g fill="#7a5898" opacity="0.75">
+          <circle cx="${x-14}" cy="${y-12}" r="2.5"/><circle cx="${x-8}" cy="${y-13}" r="2.5"/>
+          <circle cx="${x-2}" cy="${y-12}" r="2.5"/><circle cx="${x+4}" cy="${y-13}" r="2.5"/>
+          <circle cx="${x+10}" cy="${y-12}" r="2.5"/><circle cx="${x+16}" cy="${y-13}" r="2.5"/>
+          <circle cx="${x-12}" cy="${y-4}" r="2.5"/><circle cx="${x-6}" cy="${y-5}" r="2.5"/>
+          <circle cx="${x}" cy="${y-4}" r="2.5"/><circle cx="${x+6}" cy="${y-5}" r="2.5"/>
+          <circle cx="${x+12}" cy="${y-4}" r="2.5"/>
+        </g>
+        <text x="${x}" y="${y+22}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9" fill="#3a1a06">Vineyard</text>
+      </g>`;
+    }
+    // Generic fallback — plain stone building
+    return `<g id="${svgId}-${key}" ${dataAttrs}>
+      <rect x="${x-14}" y="${y-16}" width="28" height="26" rx="1" fill="#b8a870" stroke="#6a5020" stroke-width="0.9"/>
+      <polygon points="${x-14},${y-16} ${x+14},${y-16} ${x},${y-28}" fill="#a09060" stroke="#6a5020" stroke-width="0.8"/>
+      <rect x="${x-4}" y="${y+2}" width="8" height="8" rx="1" fill="#2a1808"/>
+      <text x="${x}" y="${y+24}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9" fill="#3a1a06">${imp.length>12?imp.slice(0,11)+'…':imp}</text>
+    </g>`;
+  }
+
+  const svgId = 'msv_' + charName;
+
+  // Position improvements in a loose cluster near the hall
+  const improvPositions = improvements.map((imp, i) => {
+    const col = i % 3;
+    const row = Math.floor(i / 3);
+    return { imp, x: hallX + 80 + col * 58, y: hallY - 30 + row * 60 };
+  });
+  const improvSymbols = improvPositions.map(({imp,x,y}) => improvBuilding(imp, x, y, svgId)).join('');
+
+  // Bonus marker
+  const bonusMarker = bonus.includes('Faer') ? `<text x="${vx+30}" y="${vy-55}" font-family="'IM Fell English',serif" font-style="italic" font-size="9.5" fill="#5a3080" opacity="0.8">✦ Site of Faerie Battle</text>` :
+    bonus.includes('Roman') ? `<text x="${hallX+10}" y="${hallY-35}" font-family="'IM Fell English',serif" font-style="italic" font-size="9.5" fill="#6a3808" opacity="0.8">⚔ Ancient battlefield</text>` :
+    bonus.includes('Haunt') ? `<text x="${hallX+10}" y="${hallY-35}" font-family="'IM Fell English',serif" font-style="italic" font-size="9.5" fill="#3a1a5a" opacity="0.8">☽ Haunted graveyard</text>` :
+    bonus.includes('Hermit') ? `<text x="${hallX+10}" y="${hallY-35}" font-family="'IM Fell English',serif" font-style="italic" font-size="9.5" fill="#2a4a2a" opacity="0.8">⛪ Hermitage</text>` :
+    bonus.includes('Plinth') ? `<text x="${hallX+10}" y="${hallY-35}" font-family="'IM Fell English',serif" font-style="italic" font-size="9.5" fill="#5a4a10" opacity="0.8">🗿 Standing stone</text>` : '';
+
+  // Lot count variant — slightly different wedge angles per manor
+  const lotCount = cfg.lotCount || 10;
+
+  // Village polygon vertices — slightly different per manor tone
+  const vOff = cfg.tone==='cool' ? 5 : cfg.tone==='green' ? -5 : 0;
+  const vPoly = [
+    [vx-65+vOff, vy-72],[vx-28,vy-95],[vx+18,vy-95],[vx+56,vy-82],
+    [vx+74,vy-50],[vx+78,vy-16],[vx+68,vy+18],[vx+48,vy+44],
+    [vx+18,vy+60],[vx-18,vy+62],[vx-48,vy+52],[vx-72,vy+32],
+    [vx-86,vy+2],[vx-84,vy-32],[vx-72,vy-56]
+  ].map(p=>p.join(',')).join(' ');
+
+  // Mill pond — position near river
+  const millX = cfg.river.enterEdge==='w' ? vx+80 : vx+70;
+  const millY = cfg.river.enterEdge==='w' ? vy+20 : vy+65;
+
+  // Stream connects mill to river
+  const streamPath = `M${millX},${millY+30} Q${millX+20},${(millY+30+rp.y2)/2} ${rp.x2-10},${rp.y2-10}`;
+
+
+  return `
+<div style="position:relative;background:#e8d4a0;border:2px solid var(--parchment-shadow);border-radius:3px;overflow:hidden;line-height:0">
+<svg id="${svgId}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%">
+<defs>
+  <pattern id="mp-h0${charName}" x="0" y="0" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(10)"><rect width="8" height="16" fill="#9a7820" opacity="0.2"/></pattern>
+  <pattern id="mp-h1${charName}" x="0" y="0" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(55)"><rect width="8" height="16" fill="#9a7820" opacity="0.2"/></pattern>
+  <pattern id="mp-h2${charName}" x="0" y="0" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(100)"><rect width="8" height="16" fill="#9a7820" opacity="0.2"/></pattern>
+  <pattern id="mp-h3${charName}" x="0" y="0" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(145)"><rect width="8" height="16" fill="#9a7820" opacity="0.2"/></pattern>
+  <pattern id="mp-h4${charName}" x="0" y="0" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(25)"><rect width="8" height="16" fill="#9a7820" opacity="0.2"/></pattern>
+  <pattern id="mp-h5${charName}" x="0" y="0" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(70)"><rect width="8" height="16" fill="#9a7820" opacity="0.2"/></pattern>
+  <pattern id="mp-h6${charName}" x="0" y="0" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(115)"><rect width="8" height="16" fill="#9a7820" opacity="0.2"/></pattern>
+  <pattern id="mp-h7${charName}" x="0" y="0" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(160)"><rect width="8" height="16" fill="#9a7820" opacity="0.2"/></pattern>
+  <pattern id="mp-h8${charName}" x="0" y="0" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(40)"><rect width="8" height="16" fill="#9a7820" opacity="0.2"/></pattern>
+  <pattern id="mp-h9${charName}" x="0" y="0" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(85)"><rect width="8" height="16" fill="#9a7820" opacity="0.2"/></pattern>
+  <pattern id="mp-fx${charName}" x="0" y="0" width="12" height="12" patternUnits="userSpaceOnUse"><line x1="0" y1="6" x2="12" y2="6" stroke="#8a6010" stroke-width="0.9" opacity="0.32"/><line x1="6" y1="0" x2="6" y2="12" stroke="#8a6010" stroke-width="0.9" opacity="0.32"/></pattern>
+  <pattern id="mp-pd${charName}" x="0" y="0" width="10" height="10" patternUnits="userSpaceOnUse"><circle cx="5" cy="5" r="1.5" fill="#3a6818" opacity="0.38"/></pattern>
+  <pattern id="mp-wd${charName}" x="0" y="0" width="14" height="14" patternUnits="userSpaceOnUse"><circle cx="7" cy="7" r="3" fill="#284810" opacity="0.3"/></pattern>
+</defs>
+
+<!-- Background — fallow tone so any hairline gaps blend in -->
+<rect width="${W}" height="${H}" fill="${t.fallow}"/>
+<rect x="0" y="0" width="${W}" height="${H}" fill="none" stroke="#6a4810" stroke-width="4" opacity="0.3"/>
+<rect x="6" y="6" width="${W-12}" height="${H-12}" fill="none" stroke="#8a6020" stroke-width="1" opacity="0.2"/>
+
+<!-- ── FIELD LOTS (seamless tessellation around village) ── -->
+
+<!-- LOT 1 NW -->
+<g id="${svgId}-lot1" class="mz lot" data-char="${charName}" data-key="lot1" style="cursor:pointer">
+  <polygon points="${vx-65+vOff},${vy-72} ${vx-72},${vy-56} ${vx-84},${vy-32} ${vx-160},${vy-100} ${vx-100},${vy-180} 0,${vy-230} 0,0 ${vx-180},0" fill="${t.field1}" stroke="#8a6810" stroke-width="1.2"/>
+  <polygon points="${vx-65+vOff},${vy-72} ${vx-72},${vy-56} ${vx-84},${vy-32} ${vx-160},${vy-100} ${vx-100},${vy-180} 0,${vy-230} 0,0 ${vx-180},0" fill="url(#mp-h0${charName})"/>
+  <line x1="${vx-180}" y1="0" x2="${vx-82}" y2="${vy-35}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <line x1="${vx-140}" y1="0" x2="${vx-76}" y2="${vy-46}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <line x1="${vx-100}" y1="0" x2="${vx-72}" y2="${vy-58}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <text x="${vx-145}" y="${vy-115}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="13" fill="#3a2008" opacity="0.6">i</text>
+</g>
+
+<!-- LOT 2 N -->
+<g id="${svgId}-lot2" class="mz lot" data-char="${charName}" data-key="lot2" style="cursor:pointer">
+  <polygon points="${vx-65+vOff},${vy-72} ${vx-28},${vy-95} ${vx+18},${vy-95} ${vx-10},${vy-220} ${vx-180},${vy-230} ${vx-100},${vy-180} ${vx-160},${vy-100}" fill="${t.field2}" stroke="#8a6810" stroke-width="1.2"/>
+  <polygon points="${vx-65+vOff},${vy-72} ${vx-28},${vy-95} ${vx+18},${vy-95} ${vx-10},${vy-220} ${vx-180},${vy-230} ${vx-100},${vy-180} ${vx-160},${vy-100}" fill="url(#mp-h1${charName})"/>
+  <line x1="${vx-90}" y1="${vy-225}" x2="${vx-68}" y2="${vy-72}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <line x1="${vx-50}" y1="${vy-222}" x2="${vx-30}" y2="${vy-96}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <text x="${vx-60}" y="${vy-165}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="13" fill="#3a2008" opacity="0.6">ii</text>
+</g>
+
+<!-- LOT 3 NNE -->
+<g id="${svgId}-lot3" class="mz lot" data-char="${charName}" data-key="lot3" style="cursor:pointer">
+  <polygon points="${vx-28},${vy-95} ${vx+18},${vy-95} ${vx+56},${vy-82} ${vx+120},${vy-210} ${vx+20},${vy-240} ${vx-10},${vy-220}" fill="${t.field1}" stroke="#8a6810" stroke-width="1.2"/>
+  <polygon points="${vx-28},${vy-95} ${vx+18},${vy-95} ${vx+56},${vy-82} ${vx+120},${vy-210} ${vx+20},${vy-240} ${vx-10},${vy-220}" fill="url(#mp-h2${charName})"/>
+  <line x1="${vx}" y1="${vy-240}" x2="${vx+18}" y2="${vy-95}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <line x1="${vx+40}" y1="${vy-238}" x2="${vx+55}" y2="${vy-83}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <text x="${vx+55}" y="${vy-170}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="13" fill="#3a2008" opacity="0.6">iii</text>
+</g>
+
+<!-- LOT 4 NE -->
+<g id="${svgId}-lot4" class="mz lot" data-char="${charName}" data-key="lot4" style="cursor:pointer">
+  <polygon points="${vx+56},${vy-82} ${vx+74},${vy-50} ${vx+250},${vy-80} ${vx+280},${vy-200} ${vx+120},${vy-210}" fill="${t.field2}" stroke="#8a6810" stroke-width="1.2"/>
+  <polygon points="${vx+56},${vy-82} ${vx+74},${vy-50} ${vx+250},${vy-80} ${vx+280},${vy-200} ${vx+120},${vy-210}" fill="url(#mp-h3${charName})"/>
+  <line x1="${vx+130}" y1="${vy-212}" x2="${vx+75}" y2="${vy-50}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <line x1="${vx+200}" y1="${vy-200}" x2="${vx+165}" y2="${vy-65}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <text x="${vx+175}" y="${vy-145}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="13" fill="#3a2008" opacity="0.6">iv</text>
+</g>
+
+<!-- LOT 5 E -->
+<g id="${svgId}-lot5" class="mz lot" data-char="${charName}" data-key="lot5" style="cursor:pointer">
+  <polygon points="${vx+74},${vy-50} ${vx+78},${vy-16} ${vx+280},${vy+20} ${vx+300},${vy-100} ${vx+250},${vy-80}" fill="${t.field1}" stroke="#8a6810" stroke-width="1.2"/>
+  <polygon points="${vx+74},${vy-50} ${vx+78},${vy-16} ${vx+280},${vy+20} ${vx+300},${vy-100} ${vx+250},${vy-80}" fill="url(#mp-h4${charName})"/>
+  <line x1="${vx+252}" y1="${vy-82}" x2="${vx+75}" y2="${vy-50}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <line x1="${vx+282}" y1="${vy-40}" x2="${vx+77}" y2="${vy-30}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <text x="${vx+200}" y="${vy-30}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="13" fill="#3a2008" opacity="0.6">v</text>
+</g>
+
+<!-- LOT 6 SE -->
+<g id="${svgId}-lot6" class="mz lot" data-char="${charName}" data-key="lot6" style="cursor:pointer">
+  <polygon points="${vx+78},${vy-16} ${vx+68},${vy+18} ${vx+260},${vy+160} ${vx+310},${vy+50} ${vx+280},${vy+20}" fill="${t.field2}" stroke="#8a6810" stroke-width="1.2"/>
+  <polygon points="${vx+78},${vy-16} ${vx+68},${vy+18} ${vx+260},${vy+160} ${vx+310},${vy+50} ${vx+280},${vy+20}" fill="url(#mp-h5${charName})"/>
+  <line x1="${vx+282}" y1="${vy+22}" x2="${vx+78}" y2="${vy-14}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <line x1="${vx+300}" y1="${vy+90}" x2="${vx+70}" y2="${vy+10}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <text x="${vx+210}" y="${vy+100}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="13" fill="#3a2008" opacity="0.6">vi</text>
+</g>
+
+<!-- LOT 7 SSE -->
+<g id="${svgId}-lot7" class="mz lot" data-char="${charName}" data-key="lot7" style="cursor:pointer">
+  <polygon points="${vx+68},${vy+18} ${vx+48},${vy+44} ${vx+18},${vy+60} ${vx+100},${vy+230} ${vx+220},${vy+200} ${vx+260},${vy+160}" fill="${t.field1}" stroke="#8a6810" stroke-width="1.2"/>
+  <polygon points="${vx+68},${vy+18} ${vx+48},${vy+44} ${vx+18},${vy+60} ${vx+100},${vy+230} ${vx+220},${vy+200} ${vx+260},${vy+160}" fill="url(#mp-h6${charName})"/>
+  <line x1="${vx+262}" y1="${vy+162}" x2="${vx+68}" y2="${vy+20}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <line x1="${vx+180}" y1="${vy+210}" x2="${vx+50}" y2="${vy+45}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <text x="${vx+168}" y="${vy+145}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="13" fill="#3a2008" opacity="0.6">vii</text>
+</g>
+
+<!-- LOT 8 S -->
+<g id="${svgId}-lot8" class="mz lot" data-char="${charName}" data-key="lot8" style="cursor:pointer">
+  <polygon points="${vx+18},${vy+60} ${vx-18},${vy+62} ${vx-48},${vy+52} ${vx-30},${vy+230} ${vx+100},${vy+260} ${vx+100},${vy+230}" fill="${t.field2}" stroke="#8a6810" stroke-width="1.2"/>
+  <polygon points="${vx+18},${vy+60} ${vx-18},${vy+62} ${vx-48},${vy+52} ${vx-30},${vy+230} ${vx+100},${vy+260} ${vx+100},${vy+230}" fill="url(#mp-h7${charName})"/>
+  <line x1="${vx-30}" y1="${vy+232}" x2="${vx+18}" y2="${vy+62}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <line x1="${vx+40}" y1="${vy+248}" x2="${vx-16}" y2="${vy+64}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <text x="${vx+30}" y="${vy+175}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="13" fill="#3a2008" opacity="0.6">viii</text>
+</g>
+
+<!-- LOT 9 SW -->
+<g id="${svgId}-lot9" class="mz lot" data-char="${charName}" data-key="lot9" style="cursor:pointer">
+  <polygon points="${vx-48},${vy+52} ${vx-72},${vy+32} ${vx-86},${vy+2} ${vx-220},${vy+100} ${vx-180},${vy+220} ${vx-30},${vy+230}" fill="${t.field1}" stroke="#8a6810" stroke-width="1.2"/>
+  <polygon points="${vx-48},${vy+52} ${vx-72},${vy+32} ${vx-86},${vy+2} ${vx-220},${vy+100} ${vx-180},${vy+220} ${vx-30},${vy+230}" fill="url(#mp-h8${charName})"/>
+  <line x1="${vx-222}" y1="${vy+102}" x2="${vx-72}" y2="${vy+32}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <line x1="${vx-190}" y1="${vy+180}" x2="${vx-58}" y2="${vy+50}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <text x="${vx-165}" y="${vy+145}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="13" fill="#3a2008" opacity="0.6">ix</text>
+</g>
+
+<!-- LOT 10 W -->
+<g id="${svgId}-lot10" class="mz lot" data-char="${charName}" data-key="lot10" style="cursor:pointer">
+  <polygon points="${vx-86},${vy+2} ${vx-84},${vy-32} ${vx-72},${vy-56} ${vx-65+vOff},${vy-72} ${vx-160},${vy-100} ${vx-220},${vy-80} ${vx-260},${vy+0} ${vx-220},${vy+100}" fill="${t.field2}" stroke="#8a6810" stroke-width="1.2"/>
+  <polygon points="${vx-86},${vy+2} ${vx-84},${vy-32} ${vx-72},${vy-56} ${vx-65+vOff},${vy-72} ${vx-160},${vy-100} ${vx-220},${vy-80} ${vx-260},${vy+0} ${vx-220},${vy+100}" fill="url(#mp-h9${charName})"/>
+  <line x1="${vx-262}" y1="${vy-2}" x2="${vx-83}" y2="${vy-30}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <line x1="${vx-225}" y1="${vy-82}" x2="${vx-73}" y2="${vy-54}" stroke="#7a5808" stroke-width="0.6" opacity="0.4"/>
+  <text x="${vx-185}" y="${vy-30}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="13" fill="#3a2008" opacity="0.6">x</text>
+</g>
+
+<!-- ═══════════════════════════════════════════════════════
+     OUTER LANDSCAPE ZONES
+     All vertices exactly match lot outer edges — no gaps.
+     
+     Shared outer lot vertices used here:
+     Lot1 outer:  0,0 → vx-180,0 → vx-100,vy-180 → vx-160,vy-100
+     Lot2 outer:  vx-180,vy-230 → vx-100,vy-180 → ... → vx-10,vy-220
+     Lot3 outer:  vx-10,vy-220 → vx+20,vy-240 → vx+120,vy-210
+     Lot4 outer:  vx+120,vy-210 → vx+280,vy-200
+     Lot5 outer:  vx+280,vy-200 → vx+300,vy-100 → vx+250,vy-80
+     Lot6 outer:  vx+300,vy-100 → vx+310,vy+50 → vx+260,vy+160
+     Lot7 outer:  vx+260,vy+160 → vx+220,vy+200 → vx+100,vy+230
+     Lot8 outer:  vx+100,vy+230 → vx+100,vy+260 → vx-30,vy+230
+     Lot9 outer:  vx-30,vy+230 → vx-180,vy+220 → vx-220,vy+100
+     Lot10 outer: vx-220,vy+100 → vx-260,vy+0 → vx-220,vy-80 → vx-160,vy-100
+     ═══════════════════════════════════════════════════════ -->
+
+<!-- ═══ OUTER LANDSCAPE ZONES — layout driven by wasteDir ═══ -->
+${(()=>{
+  const wd = cfg.wasteDir || 'w';
+
+  // Helper: generate sheep symbols at positions
+  const sheep = (pts) => pts.map(([cx,cy])=>`<ellipse cx="${cx}" cy="${cy}" rx="9" ry="6" fill="#e8e0c0" stroke="#706850" stroke-width="0.5"/>`).join('');
+
+  // Helper: generate tree canopy ellipses
+  const trees = (pts) => pts.map(([cx,cy,rx,ry])=>`<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#2a5010" opacity="0.62"/>`).join('');
+
+  // Helper: pasture zone SVG
+  function pastureZone(poly, sheepPts, labelX, labelY) {
+    return `<g id="${svgId}-pasture" class="mz" data-char="${charName}" data-key="pasture" style="cursor:pointer">
+  <polygon points="${poly}" fill="${t.pasture}" stroke="#4a7828" stroke-width="1"/>
+  <polygon points="${poly}" fill="url(#mp-pd${charName})"/>
+  ${sheep(sheepPts)}
+  <text x="${labelX}" y="${labelY}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="12" fill="#1a3810">Common</text>
+  <text x="${labelX}" y="${labelY+13}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="12" fill="#1a3810">Pasture</text>
+</g>`;
+  }
+
+  // Helper: woodland zone SVG — bigger, with more trees
+  function woodlandZone(poly, treePts, labelX, labelY, labelRotate) {
+    const rot = labelRotate ? ` transform="rotate(${labelRotate},${labelX},${labelY})"` : '';
+    return `<g id="${svgId}-woodland" class="mz" data-char="${charName}" data-key="woodland" style="cursor:pointer">
+  <polygon points="${poly}" fill="${t.woodland}" stroke="#2e5818" stroke-width="1"/>
+  <polygon points="${poly}" fill="url(#mp-wd${charName})"/>
+  <g fill="#2a5010" opacity="0.62">${trees(treePts)}</g>
+  <text x="${labelX}" y="${labelY}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="12" fill="#0a2204"${rot}>Lord's Wood</text>
+</g>`;
+  }
+
+  // Helper: waste zone with scrub plants
+  function wasteZone(polys, labelX, labelY) {
+    const polyHtml = polys.map(p=>`<polygon points="${p}" fill="${t.waste}" stroke="#686828" stroke-width="1"/>`).join('');
+    // Scrub plants: small irregular plant tufts
+    const scrubPts = [
+      [labelX-60, labelY-40],[labelX-20,labelY-60],[labelX+40,labelY-30],
+      [labelX-80,labelY+20],[labelX+10,labelY+10],[labelX+60,labelY-50],
+      [labelX-40,labelY+40],[labelX+80,labelY+20],[labelX-100,labelY-20],
+    ];
+    const scrub = scrubPts.map(([sx,sy])=>`
+      <line x1="${sx}" y1="${sy}" x2="${sx-4}" y2="${sy-9}" stroke="#6a6030" stroke-width="1" opacity="0.55"/>
+      <line x1="${sx}" y1="${sy}" x2="${sx+5}" y2="${sy-8}" stroke="#6a6030" stroke-width="1" opacity="0.55"/>
+      <line x1="${sx}" y1="${sy}" x2="${sx}" y2="${sy-11}" stroke="#5a5828" stroke-width="1.2" opacity="0.6"/>
+    `).join('');
+    return `<g id="${svgId}-waste" class="mz" data-key="waste" data-char="${charName}" style="cursor:pointer">
+  ${polyHtml}
+  ${scrub}
+  <text x="${labelX}" y="${labelY}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="12" fill="#383818">Waste</text>
+</g>`;
+  }
+
+  // Helper: fallow zone
+  function fallowZone(poly) {
+    return `<g id="${svgId}-fallow" class="mz" data-char="${charName}" data-key="fallow" style="cursor:pointer">
+  <polygon points="${poly}" fill="${t.fallow}" stroke="#8a7010" stroke-width="1"/>
+  <polygon points="${poly}" fill="url(#mp-fx${charName})"/>
+  <text x="${vx+40}" y="${vy-255}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="12" fill="#2a1e06">Fallow</text>
+</g>`;
+  }
+
+  // Helper: meadow zone
+  function meadowZone(poly, labelX, labelY) {
+    return `<g id="${svgId}-meadow" class="mz" data-char="${charName}" data-key="meadow" style="cursor:pointer">
+  <polygon points="${poly}" fill="${t.meadow}" stroke="#3a6820" stroke-width="1"/>
+  <polygon points="${poly}" fill="url(#mp-pd${charName})" opacity="0.7"/>
+  <text x="${labelX}" y="${labelY}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="13" fill="#143010">The Meadow</text>
+</g>`;
+  }
+
+  // ── LAYOUT: wasteDir = 'w' (waste left, pasture+woodland right) ──
+  // Newton Tony & Broughton — river on west, waste on west  (wait: Mellyr/Agragan wasteDir='e', Gwegon='w')
+  if (wd === 'w') {
+    const fallowPoly = `0,0 ${W},0 ${W},${vy-200} ${vx+280},${vy-200} ${vx+120},${vy-210} ${vx+20},${vy-240} ${vx-10},${vy-220} ${vx-100},${vy-180} ${vx-180},${vy-230} 0,${vy-230}`;
+    const pasturePoly = `${vx+280},${vy-200} ${W},${vy-200} ${W},${vy+200} ${vx+310},${vy+50} ${vx+300},${vy-100} ${vx+250},${vy-80}`;
+    const woodlandPoly = `${vx+300},${vy-100} ${W},${vy+200} ${W},${H} ${vx+220},${H} ${vx+100},${vy+260} ${vx+220},${vy+200} ${vx+260},${vy+160} ${vx+310},${vy+50}`;
+    const meadowPoly = `0,${H} ${vx+220},${H} ${vx+100},${vy+260} ${vx+100},${vy+230} ${vx-30},${vy+230} ${vx-180},${vy+220} ${vx-220},${vy+100} 0,${H}`;
+    const wastePoly1 = `0,0 ${vx-180},0 ${vx-100},${vy-180} ${vx-180},${vy-230} 0,${vy-230}`;
+    const wastePoly2 = `0,${vy-230} ${vx-180},${vy-230} ${vx-100},${vy-180} ${vx-160},${vy-100} ${vx-220},${vy-80} ${vx-260},${vy} ${vx-220},${vy+100} ${vx-180},${vy+220} 0,${H}`;
+    return fallowZone(fallowPoly)
+      + pastureZone(pasturePoly, [[vx+370,vy-120],[vx+410,vy-90],[vx+390,vy-55],[vx+430,vy-20],[vx+360,vy+20],[vx+405,vy+50]], vx+395, vy-130)
+      + woodlandZone(woodlandPoly, [[vx+360,vy+75,16,20],[vx+405,vy+100,15,19],[vx+375,vy+135,17,21],[vx+420,vy+165,15,19],[vx+350,vy+200,17,21],[vx+400,vy+230,15,19],[vx+365,vy+265,16,20],[vx+410,vy+295,14,18],[vx+345,vy+320,15,19]], vx+390, vy+190, 0)
+      + meadowZone(meadowPoly, vx-30, vy+330)
+      + wasteZone([wastePoly1, wastePoly2], vx-310, vy+40);
+  }
+
+  // ── LAYOUT: wasteDir = 'e' (waste right, pasture+woodland left) ──
+  // Newton Tony, Cholderton, Laverstock — river west, waste east (far dry upland)
+  if (wd === 'e') {
+    const fallowPoly = `0,0 ${W},0 ${W},${vy-200} ${vx+280},${vy-200} ${vx+120},${vy-210} ${vx+20},${vy-240} ${vx-10},${vy-220} ${vx-100},${vy-180} ${vx-180},${vy-230} 0,${vy-230}`;
+    // Pasture covers NW band
+    const pasturePoly = `0,0 ${vx-180},0 ${vx-100},${vy-180} ${vx-160},${vy-100} ${vx-220},${vy-80} ${vx-260},${vy} ${vx-220},${vy+100} ${vx-280},${vy+80} 0,${vy+60}`;
+    // Woodland covers SW band — does NOT extend to bottom-centre
+    const woodlandPoly = `0,${vy+60} ${vx-280},${vy+80} ${vx-220},${vy+100} ${vx-180},${vy+220} 0,${H}`;
+    // Meadow covers bottom-centre and bottom-right (excluding the SW woodland strip)
+    const meadowPolyFull = `${vx-180},${vy+220} ${vx-30},${vy+230} ${vx+100},${vy+260} ${vx+220},${H} 0,${H}`;
+    // Waste takes the full east band
+    const wastePoly1 = `${W},0 ${vx+280},${vy-200} ${W},${vy-200}`;
+    const wastePoly2 = `${W},${vy-200} ${vx+280},${vy-200} ${vx+250},${vy-80} ${vx+300},${vy-100} ${vx+310},${vy+50} ${vx+260},${vy+160} ${vx+220},${vy+200} ${vx+100},${vy+260} ${vx+220},${H} ${W},${H}`;
+    return fallowZone(fallowPoly)
+      + pastureZone(pasturePoly, [[vx-200,vy-100],[vx-240,vy-60],[vx-270,vy-20],[vx-250,vy+20],[vx-220,vy-140]], vx-230, vy-80)
+      + woodlandZone(woodlandPoly, [[vx-240,vy+80,16,20],[vx-200,vy+115,15,19],[vx-260,vy+140,17,21],[vx-220,vy+175,15,19],[vx-250,vy+210,17,21],[vx-200,vy+250,15,19],[vx-240,vy+290,14,18]], vx-220, vy+200, 0)
+      + meadowZone(meadowPolyFull, vx+30, vy+330)
+      + wasteZone([wastePoly1, wastePoly2], vx+360, vy+100);
+  }
+
+  // ── LAYOUT: wasteDir = 'n' (waste top/north, river south) ──
+  // Stapleford — Wylye south, waste is north upland (chalk downs)
+  if (wd === 'n') {
+    // Waste fills the top band (was fallow)
+    const wastePoly = `0,0 ${W},0 ${W},${vy-200} ${vx+280},${vy-200} ${vx+120},${vy-210} ${vx+20},${vy-240} ${vx-10},${vy-220} ${vx-100},${vy-180} ${vx-180},${vy-230} 0,${vy-230}`;
+    // Fallow moves to NW strip
+    const fallowPoly = `0,0 ${vx-180},0 ${vx-100},${vy-180} ${vx-180},${vy-230} 0,${vy-230}`;
+    const pasturePoly = `${vx+280},${vy-200} ${W},${vy-200} ${W},${vy+200} ${vx+310},${vy+50} ${vx+300},${vy-100} ${vx+250},${vy-80}`;
+    const woodlandPoly = `${vx+300},${vy-100} ${W},${vy+200} ${W},${H} ${vx+220},${H} ${vx+100},${vy+260} ${vx+220},${vy+200} ${vx+260},${vy+160} ${vx+310},${vy+50}`;
+    const meadowPoly = `0,${H} ${vx+220},${H} ${vx+100},${vy+260} ${vx+100},${vy+230} ${vx-30},${vy+230} ${vx-180},${vy+220} ${vx-220},${vy+100} 0,${H}`;
+    return wasteZone([wastePoly], vx, vy-255)
+      + `<g id="${svgId}-fallow" class="mz" data-char="${charName}" data-key="fallow" style="cursor:pointer">
+  <polygon points="${fallowPoly}" fill="${t.fallow}" stroke="#8a7010" stroke-width="1"/>
+  <polygon points="${fallowPoly}" fill="url(#mp-fx${charName})"/>
+  <text x="${vx-130}" y="${vy-130}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="12" fill="#2a1e06">Fallow</text>
+</g>`
+      + pastureZone(pasturePoly, [[vx+370,vy-120],[vx+410,vy-90],[vx+390,vy-55],[vx+430,vy-20],[vx+360,vy+20],[vx+405,vy+50]], vx+395, vy-130)
+      + woodlandZone(woodlandPoly, [[vx+360,vy+75,16,20],[vx+405,vy+100,15,19],[vx+375,vy+135,17,21],[vx+420,vy+165,15,19],[vx+350,vy+200,17,21],[vx+400,vy+230,15,19],[vx+365,vy+265,16,20],[vx+410,vy+295,14,18],[vx+345,vy+320,15,19]], vx+390, vy+190, 0)
+      + meadowZone(meadowPoly, vx-30, vy+330);
+  }
+
+  return '<!-- unknown wasteDir -->';
+})()}
+
+<!-- ── ROADS ── -->
+${roadSvg(cfg.roads)}
+
+<!-- ── MILL POND + STREAM (drawn before river so river goes on top) ── -->
+<g id="${svgId}-mill" class="mz" data-char="${charName}" data-key="mill" style="cursor:pointer">
+  <ellipse cx="${millX}" cy="${millY}" rx="32" ry="22" fill="#6898b8" stroke="#285878" stroke-width="0.9" opacity="0.85"/>
+  <ellipse cx="${millX}" cy="${millY}" rx="20" ry="12" fill="none" stroke="#4878a0" stroke-width="0.5" opacity="0.5"/>
+  <rect x="${millX-30}" y="${millY-20}" width="20" height="20" rx="1" fill="#9a8060" stroke="#5a3e20" stroke-width="0.9"/>
+  <circle cx="${millX-20}" cy="${millY+4}" r="8" fill="none" stroke="#3a2010" stroke-width="1.2"/>
+  <line x1="${millX-20}" y1="${millY-4}" x2="${millX-20}" y2="${millY+12}" stroke="#3a2010" stroke-width="0.8"/>
+  <line x1="${millX-28}" y1="${millY+4}" x2="${millX-12}" y2="${millY+4}" stroke="#3a2010" stroke-width="0.8"/>
+  <text x="${millX}" y="${millY+36}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9.5" fill="#2a1206">Mill &amp; Pond</text>
+</g>
+<!-- Stream to river -->
+<path d="${streamPath}" fill="none" stroke="${cfg.river.color}" stroke-width="${Math.max(3,cfg.river.width-4)}" opacity="0.5" stroke-linecap="round"/>
+<path d="${streamPath}" fill="none" stroke="#d8f0ff" stroke-width="${Math.max(1,cfg.river.width-6)}" opacity="0.2" stroke-linecap="round" stroke-dasharray="12,10"/>
+
+<!-- ── RIVER — drawn after landscape so it sits on top ── -->
+<!-- Bank shadow -->
+<path d="${rp.path}" fill="none" stroke="${cfg.river.color}" stroke-width="${cfg.river.width+8}" opacity="0.15" stroke-linecap="round"/>
+<!-- Bank edges (darker) -->
+<path d="${rp.path}" fill="none" stroke="${cfg.river.color}" stroke-width="${cfg.river.width+2}" opacity="0.5" stroke-linecap="round"/>
+<!-- River main fill -->
+<path d="${rp.path}" fill="none" stroke="${cfg.river.color}" stroke-width="${cfg.river.width}" opacity="0.85" stroke-linecap="round"/>
+<!-- Surface shimmer -->
+<path d="${rp.path}" fill="none" stroke="#d8f0ff" stroke-width="${Math.max(2,cfg.river.width-4)}" opacity="0.25" stroke-linecap="round" stroke-dasharray="24,18"/>
+<!-- River name label -->
+<text font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="${cfg.river.color}" opacity="0.95">
+  <textPath href="#${svgId}-riverpath" startOffset="25%">${cfg.river.name}</textPath>
+</text>
+<path id="${svgId}-riverpath" d="${rp.path}" fill="none" stroke="none"/>
+
+<!-- ── VILLAGE ── -->
+<g id="${svgId}-village" class="mz" data-char="${charName}" data-key="village" style="cursor:pointer">
+  <polygon points="${vPoly}" fill="${t.village}" stroke="#7a5010" stroke-width="1.5"/>
+  <!-- Village green — muddy central area -->
+  <ellipse cx="${vx-5}" cy="${vy+8}" rx="32" ry="25" fill="#c0a858" opacity="0.35"/>
+
+  <!-- PATHS — main street N-S, cross track E-W, lanes -->
+  <path d="M${vx-4},${vy-92} Q${vx+2},${vy-40} ${vx},${vy+10} Q${vx-4},${vy+45} ${vx-6},${vy+75}" fill="none" stroke="#a08840" stroke-width="3.5" opacity="0.35" stroke-linecap="round"/>
+  <path d="M${vx-70},${vy-8} Q${vx-28},${vy+5} ${vx+5},${vy+8} Q${vx+40},${vy+10} ${vx+72},${vy+0}" fill="none" stroke="#a08840" stroke-width="2.5" opacity="0.3" stroke-linecap="round"/>
+  <path d="M${vx-58},${vy-50} Q${vx-28},${vy-36} ${vx-5},${vy-38}" fill="none" stroke="#a08840" stroke-width="1.8" opacity="0.25" stroke-linecap="round"/>
+  <path d="M${vx+10},${vy-38} Q${vx+34},${vy-42} ${vx+58},${vy-30}" fill="none" stroke="#a08840" stroke-width="1.8" opacity="0.25" stroke-linecap="round"/>
+  <path d="M${vx-38},${vy+42} Q${vx-18},${vy+36} ${vx-8},${vy+28}" fill="none" stroke="#a08840" stroke-width="1.5" opacity="0.22" stroke-linecap="round"/>
+
+  <!-- ── BUILDINGS — all upright, varied shapes and colours ── -->
+  <!-- Colours: dark timber #5a2e08, mid daub #c4a060, pale daub #d8b87a,
+       weathered #8a6840, standard #7a4818, dark #4a2408 -->
+
+  <!-- CHURCH — pale stone, distinct from timber buildings -->
+  <rect x="${vx-14}" y="${vy-84}" width="28" height="22" fill="#b8a472" stroke="#6a4e28" stroke-width="1"/>
+  <rect x="${vx-4}" y="${vy-100}" width="8" height="18" fill="#9a8858" stroke="#5a3e1e" stroke-width="0.8"/>
+  <polygon points="${vx},${vy-112} ${vx-5},${vy-100} ${vx+5},${vy-100}" fill="#6a5030"/>
+  <line x1="${vx}" y1="${vy-113}" x2="${vx}" y2="${vy-103}" stroke="#e8d8a0" stroke-width="0.8"/>
+  <line x1="${vx-4}" y1="${vy-108}" x2="${vx+4}" y2="${vy-108}" stroke="#e8d8a0" stroke-width="0.8"/>
+  <rect x="${vx-5}" y="${vy-76}" width="6" height="8" fill="#2a1808"/>
+  <text x="${vx}" y="${vy-116}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="8.5" fill="#2a1206">Church</text>
+
+  <!-- Longhouse NW — dark timber frame -->
+  <rect x="${vx-66}" y="${vy-68}" width="38" height="15" fill="#5a2e08" stroke="#2a1204" stroke-width="0.8"/>
+  <polygon points="${vx-66},${vy-68} ${vx-28},${vy-68} ${vx-47},${vy-80}" fill="#3e1e06"/>
+  <rect x="${vx-58}" y="${vy-82}" width="4" height="6" fill="#2e1404"/>
+  <rect x="${vx-40}" y="${vy-82}" width="4" height="6" fill="#2e1404"/>
+
+  <!-- Square hut NW inner — pale lime-washed daub -->
+  <rect x="${vx-56}" y="${vy-50}" width="14" height="14" fill="#d8b87a" stroke="#8a6030" stroke-width="0.7"/>
+  <polygon points="${vx-56},${vy-50} ${vx-42},${vy-50} ${vx-49},${vy-60}" fill="#b09050"/>
+
+  <!-- Narrow tall hut N — weathered grey-brown -->
+  <rect x="${vx-24}" y="${vy-60}" width="12" height="20" fill="#8a6840" stroke="#5a3e20" stroke-width="0.7"/>
+  <polygon points="${vx-24},${vy-60} ${vx-12},${vy-60} ${vx-18},${vy-72}" fill="#6a4e28"/>
+
+  <!-- L-shaped farmhouse NE — mid daub with darker wing -->
+  <rect x="${vx+18}" y="${vy-70}" width="24" height="14" fill="#c4a060" stroke="#7a5828" stroke-width="0.7"/>
+  <rect x="${vx+30}" y="${vy-56}" width="12" height="12" fill="#a08040" stroke="#6a4818" stroke-width="0.7"/>
+  <polygon points="${vx+18},${vy-70} ${vx+42},${vy-70} ${vx+30},${vy-82}" fill="#8a6030"/>
+
+  <!-- Wide byre NE — dark timber -->
+  <rect x="${vx+44}" y="${vy-52}" width="26" height="11" fill="#5a2e08" stroke="#2a1204" stroke-width="0.7"/>
+  <polygon points="${vx+44},${vy-52} ${vx+70},${vy-52} ${vx+57},${vy-62}" fill="#3e1e06"/>
+
+  <!-- Small round-ended hut W — pale daub -->
+  <rect x="${vx-76}" y="${vy-24}" width="20" height="13" fill="#d8b87a" stroke="#8a6030" stroke-width="0.7"/>
+  <polygon points="${vx-76},${vy-24} ${vx-56},${vy-24} ${vx-66},${vy-35}" fill="#b09050"/>
+
+  <!-- Wide longhouse W mid — standard mid brown -->
+  <rect x="${vx-80}" y="${vy+2}" width="40" height="14" fill="#7a4818" stroke="#3a1e06" stroke-width="0.8"/>
+  <polygon points="${vx-80},${vy+2} ${vx-40},${vy+2} ${vx-60},${vy-10}" fill="#5a3210"/>
+  <rect x="${vx-72}" y="${vy-12}" width="4" height="7" fill="#3a2008"/>
+
+  <!-- Small square hut E mid — weathered -->
+  <rect x="${vx+56}" y="${vy-18}" width="16" height="16" fill="#8a6840" stroke="#5a3e20" stroke-width="0.7"/>
+  <polygon points="${vx+56},${vy-18} ${vx+72},${vy-18} ${vx+64},${vy-28}" fill="#6a4e28"/>
+
+  <!-- Medium hut E lower — mid daub with lean-to -->
+  <rect x="${vx+56}" y="${vy+4}" width="18" height="13" fill="#c4a060" stroke="#7a5828" stroke-width="0.7"/>
+  <rect x="${vx+74}" y="${vy+8}" width="10" height="9" fill="#a08040" stroke="#6a4818" stroke-width="0.5"/>
+  <polygon points="${vx+56},${vy+4} ${vx+74},${vy+4} ${vx+65},${vy-6}" fill="#8a6030"/>
+
+  <!-- L-shaped house SW — dark timber -->
+  <rect x="${vx-68}" y="${vy+24}" width="22" height="14" fill="#5a2e08" stroke="#2a1204" stroke-width="0.7"/>
+  <rect x="${vx-56}" y="${vy+38}" width="14" height="11" fill="#4a2408" stroke="#2a1204" stroke-width="0.6"/>
+  <polygon points="${vx-68},${vy+24} ${vx-46},${vy+24} ${vx-57},${vy+14}" fill="#3e1e06"/>
+
+  <!-- Wide barn S — pale daub, large -->
+  <rect x="${vx-24}" y="${vy+52}" width="36" height="14" fill="#d8b87a" stroke="#8a6030" stroke-width="0.8"/>
+  <polygon points="${vx-24},${vy+52} ${vx+12},${vy+52} ${vx-6},${vy+40}" fill="#b09050"/>
+  <rect x="${vx-16}" y="${vy+40}" width="4" height="8" fill="#6a4828"/>
+
+  <!-- Small hut SE — standard brown -->
+  <rect x="${vx+14}" y="${vy+44}" width="14" height="12" fill="#7a4818" stroke="#3a1e06" stroke-width="0.6"/>
+  <polygon points="${vx+14},${vy+44} ${vx+28},${vy+44} ${vx+21},${vy+34}" fill="#5a3210"/>
+
+  <!-- Tiny square hut NNW — weathered grey-brown -->
+  <rect x="${vx-42}" y="${vy-54}" width="12" height="12" fill="#8a6840" stroke="#5a3e20" stroke-width="0.6"/>
+  <polygon points="${vx-42},${vy-54} ${vx-30},${vy-54} ${vx-36},${vy-64}" fill="#6a4e28"/>
+
+  <!-- Round-ended barn SE — dark timber -->
+  <rect x="${vx+30}" y="${vy+30}" width="28" height="12" fill="#5a2e08" stroke="#2a1204" stroke-width="0.7"/>
+  <ellipse cx="${vx+58}" cy="${vy+36}" rx="6" ry="6" fill="#5a2e08" stroke="#2a1204" stroke-width="0.7"/>
+  <polygon points="${vx+30},${vy+30} ${vx+58},${vy+30} ${vx+44},${vy+20}" fill="#3e1e06"/>
+
+  <text x="${vx}" y="${vy+84}" text-anchor="middle" font-family="'Cinzel',serif" font-size="11.5" fill="#1e0e04" letter-spacing="0.04em">The Village</text>
+</g>
+
+<!-- ── CHURCH — invisible clickable overlay (drawn inside village above) ── -->
+<g id="${svgId}-church" class="mz" data-char="${charName}" data-key="church" style="cursor:pointer">
+  <rect x="${vx-18}" y="${vy-116}" width="36" height="50" fill="transparent" stroke="none"/>
+</g>
+
+<!-- ── THE HALL & LORD'S CLOSE ── -->
+<g id="${svgId}-hall" class="mz" data-char="${charName}" data-key="hall" style="cursor:pointer">
+  <!-- Lord's close outer boundary — solid thin line, more defined -->
+  <rect x="${hallX-18}" y="${hallY-22}" width="118" height="108" rx="3"
+        fill="${t.village}" fill-opacity="0.25"
+        stroke="#6a4a10" stroke-width="1.5"/>
+  <!-- Inner close ground — slightly warmer fill -->
+  <rect x="${hallX-14}" y="${hallY-18}" width="110" height="100" rx="2"
+        fill="#c8a858" fill-opacity="0.2" stroke="none"/>
+
+  <!-- Path from gate to hall door -->
+  <line x1="${hallX+34}" y1="${hallY+88}" x2="${hallX+30}" y2="${hallY+44}"
+        stroke="#9a7830" stroke-width="2" opacity="0.4" stroke-linecap="round"/>
+
+  <!-- HALL BUILDING — main house -->
+  <rect x="${hallX+2}" y="${hallY}" width="58" height="42" rx="1" fill="#522408" stroke="#320e04" stroke-width="1.5"/>
+  <rect x="${hallX+6}" y="${hallY-6}" width="50" height="9" rx="1" fill="#622e0e"/>
+  <!-- Tower / solar -->
+  <rect x="${hallX+44}" y="${hallY-18}" width="16" height="26" rx="1" fill="#421e06" stroke="#320e04" stroke-width="1"/>
+  <polygon points="${hallX+44},${hallY-18} ${hallX+60},${hallY-18} ${hallX+52},${hallY-28}" fill="#320e04"/>
+  <!-- Main door -->
+  <rect x="${hallX+24}" y="${hallY+24}" width="11" height="18" rx="1" fill="#220a04"/>
+  <!-- Window slits -->
+  <rect x="${hallX+8}" y="${hallY+10}" width="5" height="8" rx="1" fill="#1a0804" opacity="0.8"/>
+  <rect x="${hallX+46}" y="${hallY+10}" width="5" height="8" rx="1" fill="#1a0804" opacity="0.8"/>
+
+  <!-- BARN — south of hall -->
+  <rect x="${hallX+4}" y="${hallY+50}" width="38" height="18" rx="1" fill="#705010" stroke="#4a3008" stroke-width="0.9"/>
+  <polygon points="${hallX+4},${hallY+50} ${hallX+42},${hallY+50} ${hallX+23},${hallY+40}" fill="#604010"/>
+
+  <!-- STABLE — west side, smaller -->
+  <rect x="${hallX-14}" y="${hallY+4}" width="14" height="26" rx="1" fill="#7a5618" stroke="#4a3008" stroke-width="0.8"/>
+  <polygon points="${hallX-14},${hallY+4} ${hallX},${hallY+4} ${hallX-7},${hallY-4}" fill="#6a4a12"/>
+
+  <!-- WELL — small circle with cross-beam -->
+  <circle cx="${hallX+86}" cy="${hallY+30}" r="5" fill="none" stroke="#5a3808" stroke-width="1.2"/>
+  <circle cx="${hallX+86}" cy="${hallY+30}" r="3" fill="#3a2808" opacity="0.5"/>
+  <line x1="${hallX+82}" y1="${hallY+24}" x2="${hallX+90}" y2="${hallY+24}" stroke="#5a3808" stroke-width="1"/>
+  <line x1="${hallX+86}" y1="${hallY+22}" x2="${hallX+86}" y2="${hallY+26}" stroke="#5a3808" stroke-width="1"/>
+
+  <!-- KITCHEN GARDEN — small hatch pattern patch -->
+  <rect x="${hallX+70}" y="${hallY+48}" width="22" height="16" rx="1" fill="#8a8838" fill-opacity="0.4" stroke="#5a5820" stroke-width="0.8"/>
+  <line x1="${hallX+70}" y1="${hallY+52}" x2="${hallX+92}" y2="${hallY+52}" stroke="#5a5820" stroke-width="0.5" opacity="0.6"/>
+  <line x1="${hallX+70}" y1="${hallY+57}" x2="${hallX+92}" y2="${hallY+57}" stroke="#5a5820" stroke-width="0.5" opacity="0.6"/>
+  <line x1="${hallX+70}" y1="${hallY+62}" x2="${hallX+92}" y2="${hallY+62}" stroke="#5a5820" stroke-width="0.5" opacity="0.6"/>
+
+  <!-- GATE — gap in boundary wall with posts -->
+  <rect x="${hallX+26}" y="${hallY+84}" width="5" height="10" rx="1" fill="#5a3808"/>
+  <rect x="${hallX+40}" y="${hallY+84}" width="5" height="10" rx="1" fill="#5a3808"/>
+
+  ${bonusMarker}
+  ${improvSymbols}
+  <text x="${hallX+38}" y="${hallY+104}" text-anchor="middle" font-family="'Cinzel',serif" font-size="10" fill="#1a0a04" letter-spacing="0.04em">The Hall</text>
+</g>
+
+<!-- ── TITLE ── -->
+<rect x="${W/2-160}" y="18" width="320" height="28" rx="2" fill="#1a1209" fill-opacity="0.86"/>
+<text x="${W/2}" y="38" text-anchor="middle" font-family="'Cinzel',serif" font-size="13.5" fill="#d4aa45" letter-spacing="0.12em">MANOR OF ${cfg.manorName.toUpperCase()}</text>
+
+<!-- ── LEGEND ── -->
+<rect x="16" y="${H-130}" width="198" height="118" rx="2" fill="#f0e4c8" fill-opacity="0.92" stroke="#9a7a3a" stroke-width="0.8"/>
+<text x="115" y="${H-114}" text-anchor="middle" font-family="'Cinzel',serif" font-size="9" fill="#3a1a06" letter-spacing="0.1em">LEGEND</text>
+<g font-family="'Crimson Pro',serif" font-size="8.5" fill="#3a1a06">
+  <rect x="24" y="${H-108}" width="11" height="8" fill="${t.field1}" stroke="#8a6810" stroke-width="0.5"/><text x="40" y="${H-100}">Field lots (1–10)</text>
+  <rect x="118" y="${H-108}" width="11" height="8" fill="${t.fallow}" stroke="#8a7010" stroke-width="0.5"/><text x="134" y="${H-100}">Fallow</text>
+  <rect x="24" y="${H-94}" width="11" height="8" fill="${t.pasture}" stroke="#4a7828" stroke-width="0.5"/><text x="40" y="${H-86}">Pasture</text>
+  <rect x="118" y="${H-94}" width="11" height="8" fill="${t.woodland}" stroke="#2e5818" stroke-width="0.5"/><text x="134" y="${H-86}">Woodland</text>
+  <rect x="24" y="${H-80}" width="11" height="8" fill="${cfg.river.color}" stroke="#285878" stroke-width="0.5"/><text x="40" y="${H-72}">Water</text>
+  <rect x="118" y="${H-80}" width="11" height="8" fill="${t.meadow}" stroke="#3a6820" stroke-width="0.5"/><text x="134" y="${H-72}">Meadow</text>
+  <rect x="24" y="${H-66}" width="11" height="8" fill="#522408" stroke="#320e04" stroke-width="0.5"/><text x="40" y="${H-58}">Hall</text>
+  <rect x="118" y="${H-66}" width="11" height="8" fill="#6a3e10" stroke="#3a1e06" stroke-width="0.5"/><text x="134" y="${H-58}">Village</text>
+  <line x1="24" y1="${H-50}" x2="35" y2="${H-50}" stroke="${t.road}" stroke-width="2.5" opacity="0.55"/><text x="40" y="${H-46}">Good road</text>
+  <line x1="118" y1="${H-50}" x2="129" y2="${H-50}" stroke="${t.road}" stroke-width="2" stroke-dasharray="4,3" opacity="0.55"/><text x="134" y="${H-46}">Poor track</text>
+  <text x="115" y="${H-24}" text-anchor="middle" font-style="italic" fill="#5a3010" font-size="8">Click field lots to mark as raided</text>
+</g>
+
+<!-- ── COMPASS ── -->
+<g transform="translate(${W-50},${H-55})">
+  <line x1="0" y1="0" x2="0" y2="-22" stroke="#6a4820" stroke-width="1.4" stroke-linecap="round"/>
+  <line x1="0" y1="0" x2="0" y2="13" stroke="#6a4820" stroke-width="0.8" opacity="0.5"/>
+  <line x1="-13" y1="0" x2="13" y2="0" stroke="#6a4820" stroke-width="0.8" opacity="0.5"/>
+  <polygon points="0,-26 -5,-15 5,-15" fill="#6a4820"/>
+  <text x="0" y="-29" text-anchor="middle" font-family="'Cinzel',serif" font-size="9" fill="#4a3010">N</text>
+</g>
+
+</svg>
+</div>
+
+<!-- Raid status bar -->
+<div id="rsbar-${charName}" style="background:#1a1209;padding:.45rem 1.1rem;display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;min-height:2rem">
+  <span style="font-family:'Cinzel',serif;font-size:.6rem;letter-spacing:.12em;text-transform:uppercase;color:#b8902a">Raided lots:</span>
+  <span id="rsval-${charName}" style="font-family:'Crimson Pro',serif;font-size:.8rem;color:#c9a86a;font-style:italic">none</span>
+  <button id="rsclear-${charName}" onclick="manorClearRaids('${charName}')" style="font-family:'Cinzel',serif;font-size:.58rem;letter-spacing:.1em;text-transform:uppercase;background:#8b1a1a;color:#f0d0d0;border:1px solid #a02020;border-radius:2px;padding:.25rem .6rem;cursor:pointer;margin-left:auto;display:none">Clear Raids</button>
+</div>
+<div id="rslog-${charName}" style="background:#1a0808;border-top:1px solid rgba(139,26,26,.25);padding:.35rem 1.1rem;font-family:'Crimson Pro',serif;font-size:.78rem;color:#e08080;font-style:italic;display:none;min-height:1.5rem"></div>
+`;
+}
+
+// ── MANOR MAP ZONE DATA (tooltips) ────────────────────────────────────────
+const MANOR_ZONE_DATA = {
+  lot1:    {name:"Lot 1 — North-West Field",   text:"Arable strips in the NW quarter. Wheat and oats on good loam.", raidable:true},
+  lot2:    {name:"Lot 2 — North Field",         text:"Strips climbing the northern rise. Barley and winter wheat. Hard ploughing.", raidable:true},
+  lot3:    {name:"Lot 3 — North-Centre Field",  text:"Wide arable swathe north of the village. The largest productive lot.", raidable:true},
+  lot4:    {name:"Lot 4 — North-East Field",    text:"Strips running toward the pasture edge. Good soil near the stream.", raidable:true},
+  lot5:    {name:"Lot 5 — East Field",          text:"Low-lying strips east of the village. Barley and oats.", raidable:true},
+  lot6:    {name:"Lot 6 — South-East Field",    text:"Strips running into the woodland edge. Decent barley ground.", raidable:true},
+  lot7:    {name:"Lot 7 — South Field (East)",  text:"Low strips toward the meadow. Rye and barley. Often partially fallow.", raidable:true},
+  lot8:    {name:"Lot 8 — South Field (West)",  text:"Wide southern strips near the meadow. Oats and wheat.", raidable:true},
+  lot9:    {name:"Lot 9 — South-West Field",    text:"Strips climbing toward the waste. Mixed grain on thin soil.", raidable:true},
+  lot10:   {name:"Lot 10 — West Field",         text:"Long strips along the western edge. Good autumn wheat.", raidable:true},
+  fallow:  {name:"Fallow Ground",               text:"Left unplanted this season. Grazed to manure for next year's planting.", raidable:false},
+  pasture: {name:"Common Pasture",              text:"Shared grazing. ~20 sheep, horses and cattle. Open to villagers.", raidable:false},
+  woodland:{name:"Lord's Wood",                 text:"Timber, firewood and foraging. Pigs fattened on autumn acorns. Only the lord may hunt.", raidable:false},
+  meadow:  {name:"The Meadow",                  text:"Cut for hay in summer. Divided in meadow-lots between lord and village.", raidable:false},
+  waste:   {name:"Waste & Scrubland",           text:"Rough uncultivated ground. Wood and grazing for peasants. Knight may hunt freely.", raidable:false},
+  mill:    {name:"Mill & Millpond",             text:"Lord-owned mill. Commoners pay toll to grind here. Bakery oven nearby.", raidable:false},
+  village: {name:"The Village (~100 households)",text:"Croft-and-toft huts, byres and granaries. Church is the largest building.", raidable:false},
+  church:  {name:"The Church",                  text:"Small, wooden. A porter tends it while the priest circuits several parishes.", raidable:false},
+  hall:    {name:"The Hall & Lord's Close",     text:"The knight's fine house. Great hall for feasts and court. Barn and stables within the close.", raidable:false},
+};
+
+// ── MANOR MAP INTERACTION ─────────────────────────────────────────────────
+const manorRaided = {}; // { charName: Set of lot keys }
+
+function initManorMap(charName) {
+  if (!manorRaided[charName]) manorRaided[charName] = new Set();
+  const svgId = 'msv_' + charName;
+  const svg = document.getElementById(svgId);
+  if (!svg) return;
+
+  // Remove stale tip if any
+  let tip = document.getElementById('mtip');
+  if (!tip) {
+    tip = document.createElement('div');
+    tip.id = 'mtip';
+    tip.style.cssText = 'position:fixed;background:#16100a;color:#f0e4c8;border:1px solid #b8902a;border-radius:3px;padding:.5rem .85rem;font-family:Crimson Pro,serif;font-size:.82rem;line-height:1.5;pointer-events:none;opacity:0;transition:opacity .12s;max-width:240px;z-index:9999;';
+    document.body.appendChild(tip);
+  }
+
+  svg.querySelectorAll('.mz').forEach(z => {
+    const key = z.dataset.key;
+    const ch  = z.dataset.char;
+
+    // Improvement buildings carry their own tooltip data in attributes
+    const isImprov = key && key.startsWith('improv-');
+    const d = isImprov
+      ? { name: z.dataset.improvName, text: z.dataset.improvText, raidable: false }
+      : MANOR_ZONE_DATA[key];
+    if (!d) return;
+
+    z.addEventListener('mouseenter', e => {
+      const raided = manorRaided[ch] && manorRaided[ch].has(key);
+      let extra = d.raidable ? (raided
+        ? '<div style="margin-top:.35rem;font-size:.76rem;color:#e08080;font-style:italic;border-top:1px solid rgba(139,26,26,.35);padding-top:.3rem">⚔ Raided — harvest lost. Click to restore.</div>'
+        : '<div style="margin-top:.35rem;font-size:.76rem;color:#e08080;font-style:italic;border-top:1px solid rgba(139,26,26,.35);padding-top:.3rem">Click to mark as raided</div>') : '';
+      tip.innerHTML = `<b style="font-family:'Cinzel',serif;font-size:.67rem;letter-spacing:.07em;color:#d4aa45;display:block;margin-bottom:.2rem;text-transform:uppercase">${d.name}</b>${d.text}${extra}`;
+      tip.style.opacity = '1';
+      manorPositTip(e);
+      manorHilite(z, key, ch, true);
+    });
+    z.addEventListener('mousemove', manorPositTip);
+    z.addEventListener('mouseleave', () => {
+      tip.style.opacity = '0';
+      manorHilite(z, key, ch, false);
+    });
+    if (d.raidable) z.addEventListener('click', () => manorToggleRaid(z, key, ch, d.name));
+  });
+}
+
+function manorHilite(z, key, ch, on) {
+  const s = z.querySelector('polygon,rect,ellipse,path');
+  if (!s) return;
+  const isRaided = manorRaided[ch] && manorRaided[ch].has(key);
+  if (on) {
+    s._os = s.getAttribute('stroke'); s._ow = s.getAttribute('stroke-width');
+    s.setAttribute('stroke', isRaided ? '#ff5555' : '#b8902a');
+    s.setAttribute('stroke-width', '2.5');
+  } else {
+    if (s._os !== undefined) {
+      s.setAttribute('stroke', isRaided ? '#8b1a1a' : s._os);
+      s.setAttribute('stroke-width', isRaided ? '2' : (s._ow||'1.2'));
+    }
+  }
+}
+
+function manorToggleRaid(z, key, ch, name) {
+  if (!manorRaided[ch]) manorRaided[ch] = new Set();
+  const set = manorRaided[ch];
+  if (set.has(key)) {
+    set.delete(key);
+    const ov = z.querySelector('.mro'); if (ov) ov.remove();
+    manorLog(ch, `${name} — raid mark cleared.`);
+  } else {
+    set.add(key);
+    const base = z.querySelector('polygon,rect,ellipse');
+    if (base) {
+      const cl = base.cloneNode(false);
+      cl.setAttribute('fill','rgba(139,26,26,0.32)');
+      cl.setAttribute('stroke','#8b1a1a');
+      cl.setAttribute('stroke-width','2');
+      cl.setAttribute('stroke-dasharray','7,3');
+      cl.classList.add('mro');
+      cl.style.pointerEvents='none';
+      z.appendChild(cl);
+    }
+    manorLog(ch, `⚔ ${name} has been raided! Harvest lost this season.`);
+  }
+  manorUpdateStatus(ch);
+}
+
+function manorLog(ch, msg) {
+  const el = document.getElementById('rslog-'+ch);
+  if (el) { el.textContent=msg; el.style.display='block'; }
+}
+
+function manorUpdateStatus(ch) {
+  const set = manorRaided[ch] || new Set();
+  const val = document.getElementById('rsval-'+ch);
+  const btn = document.getElementById('rsclear-'+ch);
+  if (val) val.textContent = set.size ? [...set].map(k=>k.replace('lot','Lot ')).join(', ') : 'none';
+  if (btn) btn.style.display = set.size ? 'inline-block' : 'none';
+}
+
+function manorClearRaids(ch) {
+  const set = manorRaided[ch] || new Set();
+  const svgId = 'msv_' + ch;
+  const svg = document.getElementById(svgId);
+  if (svg) svg.querySelectorAll('.mro').forEach(el=>el.remove());
+  set.clear();
+  manorUpdateStatus(ch);
+  manorLog(ch, 'All raid marks cleared.');
+}
+
+function manorPositTip(e) {
+  const tip = document.getElementById('mtip');
+  if (!tip) return;
+  let x = e.clientX + 16, y = e.clientY + 16;
+  if (x + 250 > window.innerWidth)  x = e.clientX - 256;
+  if (y + 150 > window.innerHeight) y = e.clientY - 150;
+  tip.style.left = x+'px'; tip.style.top = y+'px';
+}
 
 function renderEstatesTopLevel(){
+  try {
   const panel = document.getElementById('mainPanel');
   const chars = Object.keys(MANOR_DATA);
   if(!activeFamilyTab || !MANOR_DATA[activeFamilyTab]) activeFamilyTab = chars[0];
 
   const tabs = chars.map(c => `<button onclick="activeFamilyTab='${c}';renderEstatesTopLevel()" style="font-family:'Cinzel',serif;font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;padding:.5rem 1.2rem;border:none;cursor:pointer;transition:all .2s;border-bottom:2px solid ${activeFamilyTab===c?'var(--gold)':'transparent'};background:${activeFamilyTab===c?'#2a1a06':'transparent'};color:${activeFamilyTab===c?'#f0cc60':'#b89a6a'}">${c}</button>`).join('');
 
+  const subTabStyle = (k) => `font-family:'Cinzel',serif;font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;padding:.38rem .9rem;border:none;cursor:pointer;transition:all .2s;background:${estateSubTab===k?'rgba(184,144,42,.15)':'transparent'};color:${estateSubTab===k?'#d4aa45':'#8a7040'};border-bottom:2px solid ${estateSubTab===k?'var(--gold)':'transparent'}`;
+
+  const mapContent   = estateSubTab==='map'         ? `<div style="padding:0">${renderManorMapSVG(activeFamilyTab)}</div>` : '';
+  const bookHtml     = estateSubTab==='bookkeeping' ? renderEstatesPanel(activeFamilyTab) : '';
+  const bookContent  = estateSubTab==='bookkeeping' ? '<div style="padding:1.2rem 1.4rem" id="bookkeepingPanel"></div>' : '';
+
   panel.innerHTML = `
     <div style="background:var(--parchment);border:1px solid var(--parchment-shadow);border-radius:4px;box-shadow:4px 4px 0 rgba(0,0,0,.4);overflow:hidden;animation:unfurl .3s ease">
-      <div style="background:var(--ink);padding:.6rem 1.2rem;display:flex;gap:0;border-bottom:1px solid var(--gold)">
-        ${tabs}
+      <div style="background:var(--ink);padding:.5rem 1.2rem .0rem;display:flex;align-items:flex-end;justify-content:space-between;border-bottom:1px solid var(--gold);flex-wrap:wrap;gap:.3rem">
+        <div style="display:flex;gap:0">${tabs}</div>
+        <div style="display:flex;gap:0;padding-bottom:0">
+          <button onclick="estateSubTab='map';renderEstatesTopLevel();setTimeout(()=>initManorMap('${activeFamilyTab}'),60)" style="${subTabStyle('map')}">🗺 Map</button>
+          <button onclick="estateSubTab='bookkeeping';renderEstatesTopLevel()" style="${subTabStyle('bookkeeping')}">📋 Bookkeeping</button>
+        </div>
       </div>
-      <div style="padding:1.2rem 1.4rem">
-        ${renderEstatesPanel(activeFamilyTab)}
-      </div>
+      ${mapContent}${bookContent}
     </div>`;
+
+  if (estateSubTab==='map') setTimeout(()=>initManorMap(activeFamilyTab), 60);
+  if (estateSubTab==='bookkeeping') {
+    const bp = document.getElementById('bookkeepingPanel');
+    if (bp) bp.innerHTML = bookHtml;
+  }
+  } catch(e) {
+    const panel = document.getElementById('mainPanel');
+    if (panel) panel.innerHTML = `<div style="padding:2rem;font-family:'Crimson Pro',serif;color:#8a1a1a;background:var(--parchment);border-radius:4px;border:1px solid #8a1a1a">
+      <strong>Estate render error:</strong> ${e.message}<br><pre style="font-size:.7rem;margin-top:.5rem;white-space:pre-wrap">${e.stack||''}</pre>
+    </div>`;
+  }
 }
 
 function renderEstatesPanel(charName) {
@@ -2583,7 +3793,7 @@ function renderEstatesPanel(charName) {
 
   function barChart(totals) {
     if (!totals.length) return '';
-    const W=320, H=90, pad=28, barW=Math.min(26,(W-pad*2)/totals.length-4);
+    const W=260, H=90, pad=28, barW=Math.min(26,(W-pad*2)/totals.length-4);
     const maxVal = Math.max(...totals.flatMap(t=>[t.income,t.expenses,Math.abs(t.final)]))||1;
     const scale = (H-20)/maxVal;
     const bars = totals.map((t,i)=>{
@@ -2595,7 +3805,7 @@ function renderEstatesPanel(charName) {
         <text x="${x+barW}" y="${H-2}" text-anchor="middle" font-size="8" fill="#3a2008">${t.year}</text>
         <text x="${x+barW}" y="${H-10-Math.max(incH,expH)-3}" text-anchor="middle" font-size="7.5" fill="${finColor}">${t.final>=0?'+':''}${t.final}£</text>`;
     }).join('');
-    return `<svg width="${W}" height="${H}" style="display:block;overflow:visible">
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;max-width:${W}px">
       <text x="4" y="10" font-size="7" fill="#1a7a1a">■ Income</text>
       <text x="56" y="10" font-size="7" fill="#aa2020">■ Expenses</text>
       ${bars}</svg>`;
@@ -2608,7 +3818,7 @@ function renderEstatesPanel(charName) {
     return {
       year: y,
       income:   rows.reduce((s,r)=>s+(r.income||0),0),
-      expenses: rows.reduce((s,r)=>s+(r.lifestyleCost||0)+(r.improvMaint||0)+(r.family||0)+(r.improvBuild||0),0),
+      expenses: rows.reduce((s,r)=>s+(r.lifestyleCost||0)+(r.improvMaint||0)+(r.family||0)+(r.improvBuild||0)+Math.abs(r.misc||0),0),
       final:    rows.reduce((s,r)=>s+(r.final||0),0),
     };
   });
@@ -2631,7 +3841,7 @@ function renderEstatesPanel(charName) {
         <td style="font-family:'Cinzel',serif;font-size:.72rem;color:#3a2008;padding:.28rem .4rem">${h.year}</td>
         <td style="padding:.28rem .4rem"><span style="font-size:.72rem;color:${harvestColor}">${h.harvestResult||'—'}</span></td>
         <td style="font-size:.78rem;color:#2a5a2a;text-align:right;padding:.28rem .4rem">${h.income||0}£</td>
-        <td style="font-size:.78rem;color:#6a2a2a;text-align:right;padding:.28rem .4rem">${(h.lifestyleCost||0)+(h.improvMaint||0)+(h.family||0)+(h.improvBuild||0)}£</td>
+        <td style="font-size:.78rem;color:#6a2a2a;text-align:right;padding:.28rem .4rem" title="Lifestyle: ${h.lifestyleCost||0}£  |  Impr. Maint: ${h.improvMaint||0}£  |  Family: ${h.family||0}£  |  Build: ${h.improvBuild||0}£  |  Misc: ${h.misc||0}£">${(h.lifestyleCost||0)+(h.improvMaint||0)+(h.family||0)+(h.improvBuild||0)+Math.abs(h.misc||0)}£</td>
         <td style="font-size:.84rem;font-weight:700;color:${netColor};text-align:right;padding:.28rem .4rem">${h.final>=0?'+':''}${h.final}£</td>
         <td style="font-size:.7rem;color:#3d2a0e;font-style:italic;max-width:200px;overflow:hidden;text-overflow:ellipsis;padding:.28rem .4rem">${h.notes||''}</td>
       </tr>`;
@@ -2675,7 +3885,6 @@ function renderEstatesPanel(charName) {
         </div>
       </div>
       <div style="padding:.9rem 1.1rem">
-        ${m.notes&&m.notes!=='Home manor'?`<div style="font-size:.78rem;color:#3d2a0e;font-style:italic;margin-bottom:.6rem;padding:.4rem .6rem;background:rgba(0,0,0,.04);border-left:2px solid var(--parchment-shadow)">${m.notes}</div>`:''}
         ${sparkSection}
         ${m.history.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.78rem">
           <thead><tr style="border-bottom:2px solid var(--parchment-shadow)">
@@ -2798,7 +4007,7 @@ function renderEconomics() {
     return {
       year: y,
       income: rows.reduce((s,r) => s + (r.income||0), 0),
-      expenses: rows.reduce((s,r) => s + (r.lifestyleCost||0) + (r.improvMaint||0) + (r.family||0) + (r.improvBuild||0), 0),
+      expenses: rows.reduce((s,r) => s + (r.lifestyleCost||0) + (r.improvMaint||0) + (r.family||0) + (r.improvBuild||0) + Math.abs(r.misc||0), 0),
       final: rows.reduce((s,r) => s + (r.final||0), 0),
     };
   });
@@ -2820,7 +4029,7 @@ function renderEconomics() {
   // Bar chart SVG for year totals
   function barChart(totals) {
     if (!totals.length) return '';
-    const W=340, H=90, pad=32, barW=Math.min(28, (W-pad*2)/totals.length - 4);
+    const W=280, H=90, pad=24, barW=Math.min(24, (W-pad*2)/totals.length - 4);
     const maxVal = Math.max(...totals.flatMap(t=>[t.income, t.expenses, Math.abs(t.final)])) || 1;
     const scale = (H-20)/maxVal;
     const bars = totals.map((t,i) => {
@@ -2833,7 +4042,7 @@ function renderEconomics() {
         <text x="${x+barW}" y="${H-2}" text-anchor="middle" font-size="8" fill="#aaa">${t.year}</text>
         <text x="${x+barW}" y="${H-10-Math.max(incH,expH)-3}" text-anchor="middle" font-size="7.5" fill="${finColor}">${t.final>=0?'+':''}${t.final}£</text>`;
     }).join('');
-    return `<svg width="${W}" height="${H}" style="display:block;overflow:visible">
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;overflow:visible;max-height:${H}px">
       <text x="4" y="10" font-size="7" fill="#5a9a5a">■ Income</text>
       <text x="60" y="10" font-size="7" fill="#9a5a5a">■ Expenses</text>
       ${bars}
@@ -2855,7 +4064,7 @@ function renderEconomics() {
         <td style="font-family:'Cinzel',serif;font-size:.72rem;color:#3a2008;white-space:nowrap">${h.year}</td>
         <td><span style="font-size:.7rem;color:${h.harvestResult==='Great'||h.harvestResult==='Good'?'#1a5010':h.harvestResult==='Bad'||h.harvestResult==='Poor'?'#8a1a1a':'#5a3a10'}">${h.harvestResult||'—'}</span></td>
         <td style="font-size:.78rem;color:#2a5a2a;text-align:right">${h.income||0}£</td>
-        <td style="font-size:.78rem;color:#6a3a2a;text-align:right">${(h.lifestyleCost||0)+(h.improvMaint||0)+(h.family||0)+(h.improvBuild||0)}£</td>
+        <td style="font-size:.78rem;color:#6a3a2a;text-align:right">${(h.lifestyleCost||0)+(h.improvMaint||0)+(h.family||0)+(h.improvBuild||0)+Math.abs(h.misc||0)}£</td>
         <td style="font-size:.82rem;font-weight:600;color:${netColor};text-align:right">${net>=0?'+':''}${net}£</td>
         <td style="font-size:.7rem;color:#3d2a0e;font-style:italic;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${h.notes||''}">${h.notes||''}</td>
       </tr>`;
@@ -2941,14 +4150,14 @@ function renderEconomics() {
       ${tabs}
     </div>
 
-    <div style="padding:1.2rem;display:grid;grid-template-columns:1fr 320px;gap:1.2rem;align-items:start">
-      <div>${manorCards}</div>
+    <div style="padding:1.2rem;display:grid;grid-template-columns:1fr 280px;gap:1.2rem;align-items:start;min-width:0">
+      <div style="min-width:0">${manorCards}</div>
 
-      <div style="position:sticky;top:1rem">
-        <div style="background:rgba(0,0,0,.08);border:1px solid var(--parchment-shadow);border-radius:3px;padding:1rem;margin-bottom:1rem">
+      <div style="position:sticky;top:1rem;min-width:0;overflow:hidden">
+        <div style="background:rgba(0,0,0,.08);border:1px solid var(--parchment-shadow);border-radius:3px;padding:1rem;margin-bottom:1rem;overflow:hidden">
           <div style="font-family:'Cinzel',serif;font-size:.65rem;letter-spacing:.14em;color:var(--steel);text-transform:uppercase;margin-bottom:.8rem">Estate Summary</div>
           ${yearTotals.length ? `
-          <div style="margin-bottom:.8rem">${barChart(yearTotals)}</div>
+          <div style="margin-bottom:.8rem;overflow:hidden">${barChart(yearTotals)}</div>
           <table style="width:100%;border-collapse:collapse;font-size:.78rem">
             <thead><tr style="border-bottom:1px solid var(--parchment-shadow)">
               <th style="font-family:'Cinzel',serif;font-size:.58rem;color:var(--steel);text-align:left;padding:.2rem;font-weight:normal">Year</th>
