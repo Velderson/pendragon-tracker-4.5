@@ -3313,20 +3313,19 @@ ${(()=>{
   // Newton Tony, Cholderton, Laverstock — river west, waste east (far dry upland)
   if (wd === 'e') {
     const fallowPoly = `0,0 ${W},0 ${W},${vy-200} ${vx+280},${vy-200} ${vx+120},${vy-210} ${vx+20},${vy-240} ${vx-10},${vy-220} ${vx-100},${vy-180} ${vx-180},${vy-230} 0,${vy-230}`;
-    // Pasture covers full NW band — reaches 0,0 at top-left
+    // Pasture covers NW band
     const pasturePoly = `0,0 ${vx-180},0 ${vx-100},${vy-180} ${vx-160},${vy-100} ${vx-220},${vy-80} ${vx-260},${vy} ${vx-220},${vy+100} ${vx-280},${vy+80} 0,${vy+60}`;
-    // Woodland covers SW band — reaches 0,H
-    const woodlandPoly = `0,${vy+60} ${vx-280},${vy+80} ${vx-220},${vy+100} ${vx-180},${vy+220} ${vx-30},${vy+230} ${vx+100},${vy+260} ${vx+220},${H} 0,${H}`;
-    const meadowPoly = `${vx-30},${vy+230} ${vx+100},${vy+260} ${vx+100},${vy+230} ${vx+220},${vy+200} ${vx+260},${vy+160} ${vx+220},${H} ${vx+100},${vy+260}`;
+    // Woodland covers SW band — does NOT extend to bottom-centre
+    const woodlandPoly = `0,${vy+60} ${vx-280},${vy+80} ${vx-220},${vy+100} ${vx-180},${vy+220} 0,${H}`;
+    // Meadow covers bottom-centre and bottom-right (excluding the SW woodland strip)
+    const meadowPolyFull = `${vx-180},${vy+220} ${vx-30},${vy+230} ${vx+100},${vy+260} ${vx+220},${H} 0,${H}`;
     // Waste takes the full east band
     const wastePoly1 = `${W},0 ${vx+280},${vy-200} ${W},${vy-200}`;
     const wastePoly2 = `${W},${vy-200} ${vx+280},${vy-200} ${vx+250},${vy-80} ${vx+300},${vy-100} ${vx+310},${vy+50} ${vx+260},${vy+160} ${vx+220},${vy+200} ${vx+100},${vy+260} ${vx+220},${H} ${W},${H}`;
-    // Meadow fills bottom centre
-    const meadowPolyFull = `${vx-180},${vy+220} ${vx-30},${vy+230} ${vx+100},${vy+260} ${vx+220},${H} 0,${H} 0,${vy+60} ${vx-280},${vy+80} ${vx-220},${vy+100}`;
     return fallowZone(fallowPoly)
       + pastureZone(pasturePoly, [[vx-200,vy-100],[vx-240,vy-60],[vx-270,vy-20],[vx-250,vy+20],[vx-220,vy-140]], vx-230, vy-80)
-      + woodlandZone(woodlandPoly, [[vx-240,vy+80,16,20],[vx-200,vy+115,15,19],[vx-260,vy+140,17,21],[vx-220,vy+175,15,19],[vx-250,vy+210,17,21],[vx-200,vy+250,15,19],[vx-240,vy+290,14,18]], vx-230, vy+200, 0)
-      + meadowZone(meadowPolyFull, vx+60, vy+340)
+      + woodlandZone(woodlandPoly, [[vx-240,vy+80,16,20],[vx-200,vy+115,15,19],[vx-260,vy+140,17,21],[vx-220,vy+175,15,19],[vx-250,vy+210,17,21],[vx-200,vy+250,15,19],[vx-240,vy+290,14,18]], vx-220, vy+200, 0)
+      + meadowZone(meadowPolyFull, vx+30, vy+330)
       + wasteZone([wastePoly1, wastePoly2], vx+360, vy+100);
   }
 
