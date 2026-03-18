@@ -806,7 +806,6 @@ function ftColor(status, isPC, illegitimate, isSpouse){
   if(illegitimate)       return {fill:'#000000', stroke:'#885050', text:'#c09080', sw:1, dash:true};
   if(status==='dead')    return {fill:'#000000', stroke:'#e05050', text:'#ff9090', sw:1.5};
   if(status==='unknown') return {fill:'#000000', stroke:'#8888cc', text:'#ccccff', sw:1};
-  if(status==='ghost')   return {fill:'#000000', stroke:'#888866', text:'#cccc99', sw:1};
   return                        {fill:'#000000', stroke:'#c8a040', text:'#ffe8a0', sw:1};
 }
 
@@ -846,8 +845,8 @@ function buildFamilyTree(charName){
   const parGi    = fatherGi >= 0 ? fatherGi : motherGi >= 0 ? motherGi : -1;
   if(parGi > 0){
     const gpGi = parGi - 1;
-    const hasGpPat = data.generations[gpGi] && data.generations[gpGi].some(n => n.id === 'gp_pat');
-    const hasGpMat = data.generations[gpGi] && data.generations[gpGi].some(n => n.id === 'gp_mat');
+    const hasGpPat = data.generations[gpGi] && data.generations[gpGi].some(n => n.id === 'gp_pat' || n.id === 'gp_pat_f');
+    const hasGpMat = data.generations[gpGi] && data.generations[gpGi].some(n => n.id === 'gp_mat' || n.id === 'gp_mat_f');
     if(!hasGpPat && fatherNode){
       const placeholder = {id:'gp_pat', label:'Grandfather', role:'Paternal Grandparents', status:'dead', ghost:true};
       if(!data.generations[gpGi]) data.generations[gpGi] = [];
@@ -942,14 +941,15 @@ function buildFamilyTree(charName){
   // Fallback
   allNodes.forEach(n => { if(!side.has(n.id)) side.set(n.id, 'mat'); });
 
-  // ── 3b. Order each generation: pat-LEFT | pc-CENTRE | mat-RIGHT | children-CENTRE ──
+  // ── 3b. Order each generation: mat-LEFT | pc-CENTRE | pat-RIGHT | children-CENTRE ──
+  //   Father's family on right, mother's family on left (mothers marry in)
   const genOrder = data.generations.map(gen => {
     const ids = gen.map(n => n.id);
     const pat   = ids.filter(id => side.get(id) === 'pat');
     const pc    = ids.filter(id => side.get(id) === 'pc');
     const mat   = ids.filter(id => side.get(id) === 'mat');
     const child = ids.filter(id => side.get(id) === 'child');
-    return [...pat, ...pc, ...mat, ...child];
+    return [...mat, ...pc, ...pat, ...child];
   });
 
   // ── 3c. Within pat/mat groups, keep children grouped under their parent ──
@@ -972,7 +972,23 @@ function buildFamilyTree(charName){
     const mat   = genOrder[gi].filter(id => side.get(id)==='mat');
     const child = genOrder[gi].filter(id => side.get(id)==='child');
 
-    genOrder[gi] = [...sortByParent(pat), ...pc, ...sortByParent(mat), ...sortByParent(child)];
+    let matSorted = sortByParent(mat);
+    let patSorted = sortByParent(pat);
+
+    // Put mother rightmost in mat group (closest to centre)
+    const motherIdx = matSorted.findIndex(id => { const nd = allNodes.find(x=>x.id===id); return nd && nd.ismother; });
+    if(motherIdx >= 0 && motherIdx < matSorted.length - 1){
+      const [mid] = matSorted.splice(motherIdx, 1);
+      matSorted.push(mid);
+    }
+    // Put father leftmost in pat group (closest to centre)
+    const fatherIdx = patSorted.findIndex(id => { const nd = allNodes.find(x=>x.id===id); return nd && nd.isfather; });
+    if(fatherIdx > 0){
+      const [fid] = patSorted.splice(fatherIdx, 1);
+      patSorted.unshift(fid);
+    }
+
+    genOrder[gi] = [...matSorted, ...pc, ...patSorted, ...sortByParent(child)];
   }
 
   // ── 3d. Ensure spouses are always adjacent ────────────────────
@@ -1079,7 +1095,7 @@ function buildFamilyTree(charName){
       id: n.id,
       label: n.label || '',
       role:  n.role  || '',
-      status: n.ghost ? 'ghost' : (n.status || 'alive'),
+      status: n.status || 'alive',
       age:   n.age   || '',
       glory: n.glory || '',
       pc:    !!n.pc,
@@ -1161,6 +1177,40 @@ function ftDrawTree(){
 
   const nodeMap = new Map(ftNodes.map(n => [n.id, n]));
 
+  // ── Build a map of couple/spouse pairs for connector routing ──
+  // When both parents exist, children should drop from the midpoint of the couple line
+  const coupleMap = new Map(); // nodeId → partnerId
+  ftEdges.forEach(e => {
+    if(e.type === 'couple' || e.type === 'spouse'){
+      coupleMap.set(e.a, e.b);
+      coupleMap.set(e.b, e.a);
+    }
+  });
+
+  // ── Spouse/couple lines (draw FIRST so connectors layer on top) ──
+  ftEdges.forEach(e => {
+    if(e.type !== 'spouse' && e.type !== 'couple') return;
+    const a = nodeMap.get(e.a), b = nodeMap.get(e.b);
+    if(!a || !b) return;
+    ctx.strokeStyle = e.type === 'couple' ? '#d4a040' : '#a090d0';
+    ctx.lineWidth   = (e.type === 'couple' ? 2.5 : 2) / ftZoom;
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    ctx.moveTo(a.x + (b.x > a.x ? BW/2 : -BW/2), a.y);
+    ctx.lineTo(b.x + (b.x > a.x ? -BW/2 : BW/2), b.y);
+    ctx.stroke();
+    // Small heart/ring marker at midpoint for couple
+    if(e.type === 'couple'){
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      ctx.fillStyle = '#d4a040';
+      ctx.beginPath();
+      ctx.arc(mx, my, 3/ftZoom, 0, Math.PI*2);
+      ctx.fill();
+    }
+  });
+
   // ── Parent–child connectors ───────────────────────────────────
   // Group children by parent so we can draw a single horizontal bar
   const parentToChildren = new Map();
@@ -1179,21 +1229,31 @@ function ftDrawTree(){
     const illegKids  = kids.filter(k => k.illegitimate);
     const legitKids  = kids.filter(k => !k.illegitimate);
 
+    // Determine anchor point: if parent has a spouse, drop from couple midpoint
+    let anchorX = par.x;
+    let anchorY = par.y + BH/2;
+    const partnerId = coupleMap.get(pid);
+    const partner = partnerId ? nodeMap.get(partnerId) : null;
+    if(partner){
+      anchorX = (par.x + partner.x) / 2;
+      anchorY = (par.y + partner.y) / 2;
+    }
+
     // Draw legitimate children grouped
     if(legitKids.length){
-      const barY   = (par.y + BH/2 + legitKids[0].y - BH/2) / 2;
-      const leftX  = Math.min(par.x, ...legitKids.map(k => k.x));
-      const rightX = Math.max(par.x, ...legitKids.map(k => k.x));
+      const barY   = (anchorY + legitKids[0].y - BH/2) / 2;
+      const leftX  = Math.min(anchorX, ...legitKids.map(k => k.x));
+      const rightX = Math.max(anchorX, ...legitKids.map(k => k.x));
 
       ctx.strokeStyle = '#8a6820';
       ctx.lineWidth   = 1 / ftZoom;
       ctx.setLineDash([]);
       ctx.globalAlpha = 0.8;
 
-      // Vertical drop from parent
+      // Vertical drop from anchor (couple midpoint or parent)
       ctx.beginPath();
-      ctx.moveTo(par.x, par.y + BH/2);
-      ctx.lineTo(par.x, barY);
+      ctx.moveTo(anchorX, anchorY);
+      ctx.lineTo(anchorX, barY);
       ctx.stroke();
 
       // Horizontal bar spanning all children
@@ -1215,36 +1275,19 @@ function ftDrawTree(){
 
     // Draw illegitimate children with dashed lines, separately
     illegKids.forEach(k => {
-      const barY = (par.y + BH/2 + k.y - BH/2) / 2;
+      const barY = (anchorY + k.y - BH/2) / 2;
       ctx.strokeStyle = '#885050';
       ctx.lineWidth   = 1 / ftZoom;
       ctx.setLineDash([4/ftZoom, 3/ftZoom]);
       ctx.globalAlpha = 0.7;
       ctx.beginPath();
-      ctx.moveTo(par.x, par.y + BH/2);
-      ctx.lineTo(par.x, barY);
+      ctx.moveTo(anchorX, anchorY);
+      ctx.lineTo(anchorX, barY);
       ctx.lineTo(k.x, barY);
       ctx.lineTo(k.x, k.y - BH/2);
       ctx.stroke();
       ctx.setLineDash([]);
     });
-  });
-
-  // ── Spouse/couple lines ───────────────────────────────────────
-  ftEdges.forEach(e => {
-    if(e.type !== 'spouse' && e.type !== 'couple') return;
-    const a = nodeMap.get(e.a), b = nodeMap.get(e.b);
-    if(!a || !b) return;
-    const midY = (a.y + b.y) / 2;
-    ctx.strokeStyle = '#a090d0';
-    ctx.lineWidth   = 1 / ftZoom;
-    ctx.setLineDash([5/ftZoom, 3/ftZoom]);
-    ctx.globalAlpha = 0.7;
-    ctx.beginPath();
-    ctx.moveTo(a.x + (b.x > a.x ? BW/2 : -BW/2), a.y);
-    ctx.lineTo(b.x + (b.x > a.x ? -BW/2 : BW/2), b.y);
-    ctx.stroke();
-    ctx.setLineDash([]);
   });
 
   ctx.globalAlpha = 1;
@@ -1254,7 +1297,7 @@ function ftDrawTree(){
     const col = ftColor(n.status, n.pc, n.illegitimate, n.isSpouse);
     const nx  = n.x - BW/2, ny = n.y - BH/2;
 
-    ctx.globalAlpha = n.ghost ? 0.5 : 1;
+    ctx.globalAlpha = 1;
 
     // Drop shadow
     ctx.shadowColor   = 'rgba(0,0,0,0.35)';
@@ -1272,7 +1315,7 @@ function ftDrawTree(){
     ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
 
     // Deceased strikethrough — big bold red X
-    if(n.status === 'dead' && !n.ghost){
+    if(n.status === 'dead'){
       ctx.save();
       ctx.globalAlpha = 0.85;
       ctx.strokeStyle = '#dd2222';
@@ -1294,7 +1337,7 @@ function ftDrawTree(){
 
     const fs = 1 / ftZoom;
     ctx.textAlign = 'center';
-    ctx.globalAlpha = n.ghost ? 0.6 : 1;
+    ctx.globalAlpha = 1;
 
     // Name (wraps if contains \n)
     const nameLines = n.label.split('\n');
@@ -1306,9 +1349,9 @@ function ftDrawTree(){
     } else {
       ctx.fillText(n.label, n.x, ny + 14);
       // Role (first part only, truncated)
-      if(n.role && !n.ghost){
+      if(n.role){
         ctx.font        = `italic ${7*fs}px serif`;
-        ctx.globalAlpha = n.ghost ? 0.4 : 0.85;
+        ctx.globalAlpha = 0.85;
         ctx.fillStyle   = col.text;
         ctx.fillText(n.role.split('·')[0].trim().slice(0, 24), n.x, ny + 25);
       }
@@ -1498,10 +1541,11 @@ function renderFamily(){
   if (familySubTab === 'tree') {
     const legend = `<div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;font-family:'Cinzel',serif;font-size:.62rem;letter-spacing:.08em;color:var(--steel)">
       <span><span style="display:inline-block;width:10px;height:10px;background:#3a1a00;border:2px solid #d4a017;border-radius:1px;vertical-align:middle;margin-right:4px"></span>★ Player Character</span>
-      <span><span style="display:inline-block;width:10px;height:10px;background:#0d0a18;border:1.5px solid #a090d0;border-radius:1px;vertical-align:middle;margin-right:4px"></span>Wife</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:#0d0a18;border:1.5px solid #a090d0;border-radius:1px;vertical-align:middle;margin-right:4px"></span>Wife / Spouse</span>
+      <span><span style="display:inline-block;width:14px;height:3px;background:#d4a040;border-radius:1px;vertical-align:middle;margin-right:4px"></span>Marriage</span>
       <span><span style="display:inline-block;width:10px;height:10px;background:#1e1408;border:1px solid #8b6914;border-radius:1px;vertical-align:middle;margin-right:4px"></span>Alive</span>
-      <span><span style="display:inline-block;width:10px;height:10px;background:#1a0808;border:1px solid #5a2020;border-radius:1px;vertical-align:middle;margin-right:4px"></span>Deceased</span>
-      <span style="color:#c0a040">▸ Click a parent to reveal their siblings</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:#1a0808;border:1px solid #5a2020;border-radius:1px;vertical-align:middle;margin-right:4px"></span>✕ Deceased</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:#000;border:1px dashed #885050;border-radius:1px;vertical-align:middle;margin-right:4px"></span>Illegitimate</span>
     </div>`;
 
     const entourage = TREE_DATA[activeFamilyTab]?.entourage || [];
@@ -1861,7 +1905,6 @@ function renderConflicts(){
       ]},
       {name:'Count Roderick',role:'Count of Salisbury',    glory:'8,840',  homage:20,  highlight:true, knights:[
         {name:'Sir Elad',       role:'Marshall of Salisbury',  glory:'4,890'},
-        {name:'Sir Blains',     role:'Baron of Silchester',    glory:'3,120'},
         {name:'Sir Duach',      role:'Baron of Wereside',      glory:'—'},
       ]},
       {name:'Lady Elin',     role:'Countess of Rydychan',  glory:'3,900',  homage:null, knights:[
@@ -1909,19 +1952,19 @@ function renderConflicts(){
           ${n.knights.map(k=>`<div style="display:flex;justify-content:space-between;align-items:baseline;padding:.15rem 0;border-bottom:1px solid rgba(255,255,255,.04)">
             <div>
               <span style="font-family:'Cinzel',serif;font-size:.7rem;color:#c8b070">${k.name}</span>
-              <span style="font-size:.62rem;color:#6a5a3a;font-style:italic;margin-left:.3rem">${k.role}</span>
+              <span style="font-size:.62rem;color:#a89878;font-style:italic;margin-left:.3rem">${k.role}</span>
             </div>
-            ${k.glory&&k.glory!=='—'?`<span style="font-size:.62rem;color:#5a4a2a">${k.glory}</span>`:''}
+            ${k.glory&&k.glory!=='—'?`<span style="font-size:.62rem;color:#a89868">${k.glory}</span>`:''}
           </div>`).join('')}
         </div>`;
       }
 
       return `<div ${clickAttr}style="background:${bg};border:1px solid ${borderCol};border-left:3px solid ${borderCol};border-radius:3px;padding:.6rem .9rem;min-width:160px;flex:1;max-width:240px${hasKnights?';cursor:pointer;transition:box-shadow .15s':''}${hasKnights&&!isExpanded?';opacity:.95':''}">
         <div style="font-family:'Cinzel',serif;font-size:.82rem;font-weight:${n.highlight?'700':'400'};color:${nameCol};line-height:1.2">${expandIndicator}${n.name}</div>
-        <div style="font-size:.7rem;color:#9a8a6a;font-style:italic;margin-top:.1rem">${n.role}</div>
-        ${tier!=='baron'?`<div style="font-size:.67rem;color:#6a5a4a;margin-top:.1rem">${n.glory} Glory</div>`:''}
+        <div style="font-size:.7rem;color:#c8b898;font-style:italic;margin-top:.1rem">${n.role}</div>
+        ${tier!=='baron'?`<div style="font-size:.67rem;color:#a89868;margin-top:.1rem">${n.glory} Glory</div>`:''}
         ${n.homage!=null?`<div style="font-size:.67rem;margin-top:.2rem;color:${homageColor(n.homage)}">Homage (Uther) <strong>${n.homage}</strong></div>`:''}
-        ${n.note?`<div style="font-size:.65rem;color:#8a7a6a;margin-top:.18rem;font-style:italic">${n.note}</div>`:''}
+        ${n.note?`<div style="font-size:.65rem;color:#b8a888;margin-top:.18rem;font-style:italic">${n.note}</div>`:''}
         ${knightsHtml}
       </div>`;
     }
@@ -1977,6 +2020,22 @@ function renderConflicts(){
       <!-- PCs -->
       <div style="font-family:'Cinzel',serif;font-size:.55rem;letter-spacing:.14em;color:var(--gold);text-transform:uppercase;text-align:center;margin-bottom:.35rem">Player Knights of Salisbury</div>
       <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:center">${pcCards}</div>
+      ${vLine('#6a5a2a')}
+      <!-- Sworn Swords -->
+      <div style="font-family:'Cinzel',serif;font-size:.55rem;letter-spacing:.14em;color:#c8a850;text-transform:uppercase;text-align:center;margin-bottom:.35rem">Sworn Swords & Manor-Holders</div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:center">
+        ${PC_NAMES.map(name => {
+          const ef = enfeoffed[name]||[];
+          if(!ef.filter(e=>e.holder).length) return '';
+          return ef.filter(e=>e.holder && e.note && e.note.includes('Enfeoffed')).map(e=>
+            `<div style="background:#000000;border:1px solid #5a4a2a;border-left:3px solid #8a7030;border-radius:3px;padding:.5rem .8rem;min-width:140px;max-width:200px;flex:1">
+              <div style="font-family:'Cinzel',serif;font-size:.76rem;color:#d8c070">${e.holder}</div>
+              <div style="font-size:.66rem;color:#9a8a5a;font-style:italic;margin-top:.08rem">🏡 ${e.manor}</div>
+              <div style="font-size:.6rem;color:#7a6a3a;margin-top:.15rem">↑ sworn to <strong style="color:#c8a850">${name}</strong></div>
+            </div>`
+          ).join('');
+        }).join('')}
+      </div>
       <!-- Independent Kings -->
       <div style="margin-top:1.4rem;padding-top:1rem;border-top:1px solid var(--parchment-shadow)">
         <div style="font-family:'Cinzel',serif;font-size:.55rem;letter-spacing:.14em;color:#7a9a7a;text-transform:uppercase;text-align:center;margin-bottom:.35rem">Independent Kings</div>
@@ -2044,9 +2103,9 @@ function renderConflicts(){
               <span style="font-size:.7rem;opacity:.7">${tierIcon[r.tier]||''}</span>
               <span style="font-family:'Cinzel',serif;font-size:.82rem;font-weight:${r.pc?'700':'400'};color:${m.nameCol}">${r.name}</span>
             </div>
-            <div style="font-size:.7rem;color:#8a7a6a;font-style:italic;margin-top:.1rem">${r.title}</div>
-            <div style="font-size:.66rem;color:#5a4a3a;margin-top:.12rem">${r.glory.toLocaleString()} Glory</div>
-            ${r.note?`<div style="font-size:.65rem;color:#7a6a5a;margin-top:.2rem;font-style:italic">${r.note}</div>`:''}
+            <div style="font-size:.7rem;color:#c8b898;font-style:italic;margin-top:.1rem">${r.title}</div>
+            <div style="font-size:.66rem;color:#a89868;margin-top:.12rem">${r.glory.toLocaleString()} Glory</div>
+            ${r.note?`<div style="font-size:.65rem;color:#b8a888;margin-top:.2rem;font-style:italic">${r.note}</div>`:''}
           </div>`).join('')}
         </div>
       </div>`;
@@ -2764,7 +2823,7 @@ function renderEstatesPanel(charName) {
 
   function barChart(totals) {
     if (!totals.length) return '';
-    const W=320, H=90, pad=28, barW=Math.min(26,(W-pad*2)/totals.length-4);
+    const W=260, H=90, pad=28, barW=Math.min(26,(W-pad*2)/totals.length-4);
     const maxVal = Math.max(...totals.flatMap(t=>[t.income,t.expenses,Math.abs(t.final)]))||1;
     const scale = (H-20)/maxVal;
     const bars = totals.map((t,i)=>{
@@ -2776,7 +2835,7 @@ function renderEstatesPanel(charName) {
         <text x="${x+barW}" y="${H-2}" text-anchor="middle" font-size="8" fill="#3a2008">${t.year}</text>
         <text x="${x+barW}" y="${H-10-Math.max(incH,expH)-3}" text-anchor="middle" font-size="7.5" fill="${finColor}">${t.final>=0?'+':''}${t.final}£</text>`;
     }).join('');
-    return `<svg width="${W}" height="${H}" style="display:block;overflow:visible">
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;max-width:${W}px">
       <text x="4" y="10" font-size="7" fill="#1a7a1a">■ Income</text>
       <text x="56" y="10" font-size="7" fill="#aa2020">■ Expenses</text>
       ${bars}</svg>`;
