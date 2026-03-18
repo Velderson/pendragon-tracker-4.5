@@ -2903,18 +2903,140 @@ function renderManorMapSVG(charName) {
   const hallX = cfg.hallDir==='sw' ? vx-160 : cfg.hallDir==='w' ? vx-180 : cfg.hallDir==='n' ? vx-20 : vx+140;
   const hallY = cfg.hallDir==='sw' ? vy+130 : cfg.hallDir==='w' ? vy+20  : cfg.hallDir==='n' ? vy-160 : vy+80;
 
-  // Improvement SVG symbols
-  const IMPROV_SVG = {
-    'Dovecote':    (x,y)=>`<g><ellipse cx="${x}" cy="${y}" rx="14" ry="18" fill="#c0a870" stroke="#7a5820" stroke-width="0.9"/><ellipse cx="${x}" cy="${y-8}" rx="8" ry="5" fill="#b09060"/><line x1="${x-14}" y1="${y+4}" x2="${x+14}" y2="${y+4}" stroke="#7a5820" stroke-width="0.8"/><text x="${x}" y="${y+30}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9" fill="#3a1a06">Dovecote</text></g>`,
-    'Scriptorium': (x,y)=>`<g><rect x="${x-12}" y="${y-14}" width="24" height="28" rx="2" fill="#d4c090" stroke="#7a5820" stroke-width="0.9"/><line x1="${x-7}" y1="${y-6}" x2="${x+7}" y2="${y-6}" stroke="#5a3010" stroke-width="0.7"/><line x1="${x-7}" y1="${y}" x2="${x+7}" y2="${y}" stroke="#5a3010" stroke-width="0.7"/><line x1="${x-7}" y1="${y+6}" x2="${x+7}" y2="${y+6}" stroke="#5a3010" stroke-width="0.7"/><text x="${x}" y="${y+22}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9" fill="#3a1a06">Scriptorium</text></g>`,
-    'Apiary':      (x,y)=>`<g><ellipse cx="${x}" cy="${y}" rx="12" ry="14" fill="#d4a840" stroke="#7a6010" stroke-width="0.9"/><line x1="${x-8}" y1="${y-4}" x2="${x+8}" y2="${y-4}" stroke="#a07010" stroke-width="0.7"/><line x1="${x-8}" y1="${y+2}" x2="${x+8}" y2="${y+2}" stroke="#a07010" stroke-width="0.7"/><text x="${x}" y="${y+22}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9" fill="#3a1a06">Apiary</text></g>`,
-  };
+  // ── IMPROVEMENT BUILDING ILLUSTRATIONS ──
+  // Each returns SVG for a small illustrated building near the hall.
+  // Buildings are placed in a cluster spreading from hallX+70 onward.
+  // Each gets a data-key="improv-NAME" so the tooltip system picks it up.
 
-  const improvSymbols = improvements.map((imp,i) => {
-    const fn = IMPROV_SVG[imp];
-    if (!fn) return '';
-    return fn(hallX + 60 + i*50, hallY - 20);
-  }).join('');
+  function improvBuilding(imp, x, y, svgId) {
+    const inv = INVESTMENT_DATA[imp] || {};
+    const key = 'improv-' + imp.replace(/[^a-z0-9]/gi,'_');
+    // Tooltip text built from bookkeeping data
+    const tipName = imp;
+    const tipText = [
+      inv.income  ? `Income: ${inv.income}£/yr`  : '',
+      inv.maint   ? `Upkeep: ${inv.maint}£/yr`   : '',
+      inv.cost    ? `Built for: ${inv.cost}£`     : '',
+      inv.notes   ? inv.notes                     : '',
+    ].filter(Boolean).join(' · ');
+
+    // Store tooltip data for JS pickup
+    const dataAttrs = `class="mz" data-char="${charName}" data-key="${key}" data-improv-name="${tipName}" data-improv-text="${tipText.replace(/"/g,'&quot;')}" style="cursor:pointer"`;
+
+    // Pick building shape by improvement type
+    if (imp === 'Dovecote') {
+      // Round tower with domed cap, arched windows, pigeons
+      return `<g id="${svgId}-${key}" ${dataAttrs}>
+        <ellipse cx="${x}" cy="${y+2}" rx="16" ry="20" fill="#c8a870" stroke="#7a5020" stroke-width="1"/>
+        <ellipse cx="${x}" cy="${y-16}" rx="16" ry="8" fill="#a8885a" stroke="#7a5020" stroke-width="0.9"/>
+        <ellipse cx="${x}" cy="${y-20}" rx="10" ry="5" fill="#c0a060"/>
+        <polygon points="${x},${y-28} ${x-6},${y-22} ${x+6},${y-22}" fill="#8a6030"/>
+        <ellipse cx="${x-5}" cy="${y-5}" rx="3" ry="4" fill="none" stroke="#5a3010" stroke-width="0.8"/>
+        <ellipse cx="${x+5}" cy="${y+2}" rx="3" ry="4" fill="none" stroke="#5a3010" stroke-width="0.8"/>
+        <ellipse cx="${x-2}" cy="${y+9}" rx="3" ry="4" fill="none" stroke="#5a3010" stroke-width="0.8"/>
+        <path d="M${x-18},${y-8} Q${x-14},${y-14} ${x-10},${y-10}" fill="none" stroke="#6a5030" stroke-width="0.7" opacity="0.6"/>
+        <path d="M${x+14},${y-4} Q${x+18},${y-10} ${x+22},${y-6}" fill="none" stroke="#6a5030" stroke-width="0.7" opacity="0.6"/>
+        <text x="${x}" y="${y+34}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9" fill="#3a1a06">Dovecote</text>
+      </g>`;
+    }
+    if (imp === 'Scriptorium') {
+      // Stone scriptorium: rectangular building, arched door, small window
+      return `<g id="${svgId}-${key}" ${dataAttrs}>
+        <rect x="${x-18}" y="${y-18}" width="36" height="32" rx="1" fill="#c8b880" stroke="#6a5020" stroke-width="1"/>
+        <polygon points="${x-18},${y-18} ${x+18},${y-18} ${x},${y-34}" fill="#a89060" stroke="#6a5020" stroke-width="0.9"/>
+        <rect x="${x-5}" y="${y+2}" width="10" height="12" rx="1" fill="#3a2010"/>
+        <path d="M${x-5},${y+2} Q${x},${y-2} ${x+5},${y+2}" fill="#2a1808"/>
+        <rect x="${x+6}" y="${y-12}" width="8" height="7" rx="1" fill="#7a9ab0" stroke="#5a6070" stroke-width="0.5" opacity="0.8"/>
+        <line x1="${x-12}" y1="${y-8}" x2="${x-6}" y2="${y-8}" stroke="#5a3010" stroke-width="0.6" opacity="0.5"/>
+        <line x1="${x-12}" y1="${y-4}" x2="${x-6}" y2="${y-4}" stroke="#5a3010" stroke-width="0.6" opacity="0.5"/>
+        <line x1="${x-12}" y1="${y}" x2="${x-6}" y2="${y}" stroke="#5a3010" stroke-width="0.6" opacity="0.5"/>
+        <text x="${x}" y="${y+30}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9" fill="#3a1a06">Scriptorium</text>
+      </g>`;
+    }
+    if (imp === 'Apiary') {
+      // Three beehive skeps on a bench
+      return `<g id="${svgId}-${key}" ${dataAttrs}>
+        <rect x="${x-22}" y="${y+8}" width="44" height="4" rx="1" fill="#9a7030" stroke="#6a4818" stroke-width="0.7"/>
+        <ellipse cx="${x-12}" cy="${y+8}" rx="8" ry="11" fill="#d4a840" stroke="#9a7010" stroke-width="0.8"/>
+        <ellipse cx="${x}" cy="${y+8}" rx="8" ry="12" fill="#c89a30" stroke="#9a7010" stroke-width="0.8"/>
+        <ellipse cx="${x+12}" cy="${y+8}" rx="8" ry="11" fill="#d4a840" stroke="#9a7010" stroke-width="0.8"/>
+        <line x1="${x-18}" y1="${y+2}" x2="${x-6}" y2="${y+2}" stroke="#a07010" stroke-width="0.6"/>
+        <line x1="${x-6}" y1="${y-2}" x2="${x+6}" y2="${y-2}" stroke="#a07010" stroke-width="0.6"/>
+        <line x1="${x+6}" y1="${y+2}" x2="${x+18}" y2="${y+2}" stroke="#a07010" stroke-width="0.6"/>
+        <path d="M${x+18},${y-4} Q${x+24},${y-8} ${x+26},${y-4}" fill="none" stroke="#b8a030" stroke-width="0.7" opacity="0.7"/>
+        <path d="M${x+20},${y-2} Q${x+28},${y-6} ${x+29},${y-1}" fill="none" stroke="#b8a030" stroke-width="0.7" opacity="0.6"/>
+        <text x="${x}" y="${y+26}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9" fill="#3a1a06">Apiary</text>
+      </g>`;
+    }
+    if (imp === 'Brewery' || imp === 'Brewery, Exclusive') {
+      return `<g id="${svgId}-${key}" ${dataAttrs}>
+        <rect x="${x-16}" y="${y-14}" width="32" height="28" rx="1" fill="#b8a060" stroke="#6a5020" stroke-width="1"/>
+        <polygon points="${x-16},${y-14} ${x+16},${y-14} ${x},${y-28}" fill="#a09050" stroke="#6a5020" stroke-width="0.9"/>
+        <ellipse cx="${x-6}" cy="${y+4}" rx="7" ry="9" fill="#7a5030" stroke="#5a3818" stroke-width="0.8"/>
+        <ellipse cx="${x+8}" cy="${y+2}" rx="6" ry="8" fill="#6a4028" stroke="#5a3818" stroke-width="0.8"/>
+        <text x="${x}" y="${y+28}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9" fill="#3a1a06">${imp.includes('Exclusive')?'Excl. ':''} Brewery</text>
+      </g>`;
+    }
+    if (imp === 'Fish Pond') {
+      return `<g id="${svgId}-${key}" ${dataAttrs}>
+        <ellipse cx="${x}" cy="${y}" rx="22" ry="14" fill="#6898b8" stroke="#285878" stroke-width="0.9" opacity="0.85"/>
+        <ellipse cx="${x}" cy="${y}" rx="14" ry="8" fill="none" stroke="#4878a0" stroke-width="0.5" opacity="0.5"/>
+        <path d="M${x-8},${y-2} Q${x-4},${y-6} ${x},${y-2} Q${x+4},${y+2} ${x+8},${y-2}" fill="none" stroke="#2858a0" stroke-width="1" opacity="0.6"/>
+        <text x="${x}" y="${y+26}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9" fill="#3a1a06">Fish Pond</text>
+      </g>`;
+    }
+    if (imp === 'Herb Garden') {
+      return `<g id="${svgId}-${key}" ${dataAttrs}>
+        <rect x="${x-18}" y="${y-8}" width="36" height="20" rx="2" fill="#8a9840" stroke="#5a6820" stroke-width="0.8" fill-opacity="0.5"/>
+        <rect x="${x-16}" y="${y-6}" width="14" height="8" rx="1" fill="#6a8830" stroke="#4a5820" stroke-width="0.6" fill-opacity="0.6"/>
+        <rect x="${x+2}" y="${y-6}" width="14" height="8" rx="1" fill="#7a9838" stroke="#4a5820" stroke-width="0.6" fill-opacity="0.6"/>
+        <line x1="${x}" y1="${y-8}" x2="${x}" y2="${y+12}" stroke="#4a5820" stroke-width="0.7"/>
+        <text x="${x}" y="${y+24}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9" fill="#3a1a06">Herb Garden</text>
+      </g>`;
+    }
+    if (imp === 'Orchard') {
+      return `<g id="${svgId}-${key}" ${dataAttrs}>
+        <ellipse cx="${x-10}" cy="${y-4}" rx="10" ry="12" fill="#5a8830" stroke="#3a6020" stroke-width="0.8"/>
+        <ellipse cx="${x+10}" cy="${y-4}" rx="10" ry="12" fill="#4a7828" stroke="#3a6020" stroke-width="0.8"/>
+        <ellipse cx="${x}" cy="${y-8}" rx="9" ry="11" fill="#508030" stroke="#3a6020" stroke-width="0.8"/>
+        <line x1="${x-10}" y1="${y+8}" x2="${x-10}" y2="${y+16}" stroke="#6a4020" stroke-width="1.2"/>
+        <line x1="${x+10}" y1="${y+8}" x2="${x+10}" y2="${y+16}" stroke="#6a4020" stroke-width="1.2"/>
+        <line x1="${x}" y1="${y+3}" x2="${x}" y2="${y+16}" stroke="#6a4020" stroke-width="1.2"/>
+        <text x="${x}" y="${y+28}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9" fill="#3a1a06">Orchard</text>
+      </g>`;
+    }
+    if (imp === 'Vineyard') {
+      return `<g id="${svgId}-${key}" ${dataAttrs}>
+        <line x1="${x-20}" y1="${y-10}" x2="${x+20}" y2="${y-10}" stroke="#6a4820" stroke-width="0.9"/>
+        <line x1="${x-20}" y1="${y-2}" x2="${x+20}" y2="${y-2}" stroke="#6a4820" stroke-width="0.9"/>
+        <line x1="${x-20}" y1="${y+6}" x2="${x+20}" y2="${y+6}" stroke="#6a4820" stroke-width="0.9"/>
+        <g fill="#7a5898" opacity="0.75">
+          <circle cx="${x-14}" cy="${y-12}" r="2.5"/><circle cx="${x-8}" cy="${y-13}" r="2.5"/>
+          <circle cx="${x-2}" cy="${y-12}" r="2.5"/><circle cx="${x+4}" cy="${y-13}" r="2.5"/>
+          <circle cx="${x+10}" cy="${y-12}" r="2.5"/><circle cx="${x+16}" cy="${y-13}" r="2.5"/>
+          <circle cx="${x-12}" cy="${y-4}" r="2.5"/><circle cx="${x-6}" cy="${y-5}" r="2.5"/>
+          <circle cx="${x}" cy="${y-4}" r="2.5"/><circle cx="${x+6}" cy="${y-5}" r="2.5"/>
+          <circle cx="${x+12}" cy="${y-4}" r="2.5"/>
+        </g>
+        <text x="${x}" y="${y+22}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9" fill="#3a1a06">Vineyard</text>
+      </g>`;
+    }
+    // Generic fallback — plain stone building
+    return `<g id="${svgId}-${key}" ${dataAttrs}>
+      <rect x="${x-14}" y="${y-16}" width="28" height="26" rx="1" fill="#b8a870" stroke="#6a5020" stroke-width="0.9"/>
+      <polygon points="${x-14},${y-16} ${x+14},${y-16} ${x},${y-28}" fill="#a09060" stroke="#6a5020" stroke-width="0.8"/>
+      <rect x="${x-4}" y="${y+2}" width="8" height="8" rx="1" fill="#2a1808"/>
+      <text x="${x}" y="${y+24}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9" fill="#3a1a06">${imp.length>12?imp.slice(0,11)+'…':imp}</text>
+    </g>`;
+  }
+
+  // Position improvements in a loose cluster near the hall
+  const improvPositions = improvements.map((imp, i) => {
+    const col = i % 3;
+    const row = Math.floor(i / 3);
+    return { imp, x: hallX + 80 + col * 58, y: hallY - 30 + row * 60 };
+  });
+  const improvSymbols = improvPositions.map(({imp,x,y}) => improvBuilding(imp, x, y, svgId)).join('');
 
   // Bonus marker
   const bonusMarker = bonus.includes('Faer') ? `<text x="${vx+30}" y="${vy-55}" font-family="'IM Fell English',serif" font-style="italic" font-size="9.5" fill="#5a3080" opacity="0.8">✦ Site of Faerie Battle</text>` :
@@ -3061,69 +3183,126 @@ function renderManorMapSVG(charName) {
   <text x="${vx-185}" y="${vy-30}" text-anchor="middle" font-family="'Cinzel',serif" font-size="14" font-weight="600" fill="#3a2008" opacity="0.65">10</text>
 </g>
 
-<!-- ── FALLOW PATCH ── -->
+<!-- ═══════════════════════════════════════════════════════
+     OUTER LANDSCAPE ZONES
+     All vertices exactly match lot outer edges — no gaps.
+     
+     Shared outer lot vertices used here:
+     Lot1 outer:  0,0 → vx-180,0 → vx-100,vy-180 → vx-160,vy-100
+     Lot2 outer:  vx-180,vy-230 → vx-100,vy-180 → ... → vx-10,vy-220
+     Lot3 outer:  vx-10,vy-220 → vx+20,vy-240 → vx+120,vy-210
+     Lot4 outer:  vx+120,vy-210 → vx+280,vy-200
+     Lot5 outer:  vx+280,vy-200 → vx+300,vy-100 → vx+250,vy-80
+     Lot6 outer:  vx+300,vy-100 → vx+310,vy+50 → vx+260,vy+160
+     Lot7 outer:  vx+260,vy+160 → vx+220,vy+200 → vx+100,vy+230
+     Lot8 outer:  vx+100,vy+230 → vx+100,vy+260 → vx-30,vy+230
+     Lot9 outer:  vx-30,vy+230 → vx-180,vy+220 → vx-220,vy+100
+     Lot10 outer: vx-220,vy+100 → vx-260,vy+0 → vx-220,vy-80 → vx-160,vy-100
+     ═══════════════════════════════════════════════════════ -->
+
+<!-- FALLOW — top band, covers everything above lots 1-4 outer edges -->
 <g id="${svgId}-fallow" class="mz" data-char="${charName}" data-key="fallow" style="cursor:pointer">
-  <polygon points="${vx-160},${vy-100} ${vx-100},${vy-180} ${vx-10},${vy-220} ${vx+20},${vy-240} ${vx+120},${vy-210} ${vx+280},${vy-200} ${vx+300},${vy-100} ${vx+250},${vy-80} ${vx+120},${vy-210} ${vx+20},${vy-240} ${vx-10},${vy-220} ${vx-180},${vy-230} 0,${vy-230} 0,0 ${W},0 ${W},${vy-200} ${vx+280},${vy-200}" fill="${t.fallow}" stroke="#8a7010" stroke-width="1"/>
-  <polygon points="${vx-160},${vy-100} ${vx-100},${vy-180} ${vx-10},${vy-220} ${vx+20},${vy-240} ${vx+120},${vy-210} ${vx+280},${vy-200} ${vx+300},${vy-100} ${vx+250},${vy-80} ${vx+120},${vy-210} ${vx+20},${vy-240} ${vx-10},${vy-220} ${vx-180},${vy-230} 0,${vy-230} 0,0 ${W},0 ${W},${vy-200} ${vx+280},${vy-200}" fill="url(#mp-fx${charName})"/>
-  <text x="${vx}" y="${vy-270}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#3a2808">Fallow</text>
+  <polygon points="
+    0,0  ${W},0  ${W},${vy-200}
+    ${vx+280},${vy-200}  ${vx+120},${vy-210}  ${vx+20},${vy-240}
+    ${vx-10},${vy-220}  ${vx-100},${vy-180}  ${vx-180},${vy-230}
+    0,${vy-230}
+  " fill="${t.fallow}" stroke="#8a7010" stroke-width="1"/>
+  <polygon points="
+    0,0  ${W},0  ${W},${vy-200}
+    ${vx+280},${vy-200}  ${vx+120},${vy-210}  ${vx+20},${vy-240}
+    ${vx-10},${vy-220}  ${vx-100},${vy-180}  ${vx-180},${vy-230}
+    0,${vy-230}
+  " fill="url(#mp-fx${charName})"/>
+  <text x="${vx+60}" y="${vy-258}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#3a2808">Fallow</text>
 </g>
 
-<!-- ── PASTURE NE ── -->
+<!-- PASTURE NE — right of lots 4,5,6 -->
 <g id="${svgId}-pasture" class="mz" data-char="${charName}" data-key="pasture" style="cursor:pointer">
-  <polygon points="${vx+280},${vy-200} ${W},${vy-200} ${W},${vy+200} ${vx+310},${vy+50} ${vx+300},${vy-100}" fill="${t.pasture}" stroke="#4a7828" stroke-width="1"/>
-  <polygon points="${vx+280},${vy-200} ${W},${vy-200} ${W},${vy+200} ${vx+310},${vy+50} ${vx+300},${vy-100}" fill="url(#mp-pd${charName})"/>
+  <polygon points="
+    ${vx+280},${vy-200}  ${W},${vy-200}  ${W},${vy+200}
+    ${vx+310},${vy+50}   ${vx+300},${vy-100}
+  " fill="${t.pasture}" stroke="#4a7828" stroke-width="1"/>
+  <polygon points="
+    ${vx+280},${vy-200}  ${W},${vy-200}  ${W},${vy+200}
+    ${vx+310},${vy+50}   ${vx+300},${vy-100}
+  " fill="url(#mp-pd${charName})"/>
   <g fill="#e8e0c0" stroke="#706850" stroke-width="0.5">
-    <ellipse cx="${vx+360}" cy="${vy-100}" rx="9" ry="6"/><ellipse cx="${vx+400}" cy="${vy-80}" rx="9" ry="6"/>
-    <ellipse cx="${vx+380}" cy="${vy-50}" rx="9" ry="6"/><ellipse cx="${vx+420}" cy="${vy-20}" rx="9" ry="6"/>
-    <ellipse cx="${vx+350}" cy="${vy+10}" rx="9" ry="6"/>
+    <ellipse cx="${vx+370}" cy="${vy-120}" rx="9" ry="6"/>
+    <ellipse cx="${vx+410}" cy="${vy-90}" rx="9" ry="6"/>
+    <ellipse cx="${vx+390}" cy="${vy-55}" rx="9" ry="6"/>
+    <ellipse cx="${vx+430}" cy="${vy-20}" rx="9" ry="6"/>
+    <ellipse cx="${vx+360}" cy="${vy+20}" rx="9" ry="6"/>
+    <ellipse cx="${vx+405}" cy="${vy+50}" rx="9" ry="6"/>
   </g>
-  <text x="${vx+390}" y="${vy-115}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#2a4818">Common</text>
-  <text x="${vx+390}" y="${vy-102}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#2a4818">Pasture</text>
+  <text x="${vx+395}" y="${vy-130}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#2a4818">Common</text>
+  <text x="${vx+395}" y="${vy-117}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#2a4818">Pasture</text>
 </g>
 
-<!-- ── WOODLAND SE ── -->
+<!-- WOODLAND SE — right of lots 6,7 and below pasture -->
 <g id="${svgId}-woodland" class="mz" data-char="${charName}" data-key="woodland" style="cursor:pointer">
-  <polygon points="${vx+310},${vy+50} ${W},${vy+200} ${W},${H} ${vx+220},${H} ${vx+100},${vy+260} ${vx+220},${vy+200} ${vx+260},${vy+160}" fill="${t.woodland}" stroke="#2e5818" stroke-width="1"/>
-  <polygon points="${vx+310},${vy+50} ${W},${vy+200} ${W},${H} ${vx+220},${H} ${vx+100},${vy+260} ${vx+220},${vy+200} ${vx+260},${vy+160}" fill="url(#mp-wd${charName})"/>
+  <polygon points="
+    ${vx+300},${vy-100}  ${W},${vy+200}  ${W},${H}
+    ${vx+220},${H}       ${vx+100},${vy+260}
+    ${vx+220},${vy+200}  ${vx+260},${vy+160}
+    ${vx+310},${vy+50}
+  " fill="${t.woodland}" stroke="#2e5818" stroke-width="1"/>
+  <polygon points="
+    ${vx+300},${vy-100}  ${W},${vy+200}  ${W},${H}
+    ${vx+220},${H}       ${vx+100},${vy+260}
+    ${vx+220},${vy+200}  ${vx+260},${vy+160}
+    ${vx+310},${vy+50}
+  " fill="url(#mp-wd${charName})"/>
   <g fill="#2a5010" opacity="0.6">
-    <ellipse cx="${vx+340}" cy="${vy+100}" rx="14" ry="17"/><ellipse cx="${vx+380}" cy="${vy+130}" rx="13" ry="16"/>
-    <ellipse cx="${vx+360}" cy="${vy+165}" rx="14" ry="17"/><ellipse cx="${vx+400}" cy="${vy+190}" rx="13" ry="16"/>
-    <ellipse cx="${vx+340}" cy="${vy+210}" rx="14" ry="17"/><ellipse cx="${vx+380}" cy="${vy+240}" rx="13" ry="16"/>
+    <ellipse cx="${vx+360}" cy="${vy+80}" rx="14" ry="17"/>
+    <ellipse cx="${vx+400}" cy="${vy+110}" rx="13" ry="16"/>
+    <ellipse cx="${vx+375}" cy="${vy+148}" rx="14" ry="17"/>
+    <ellipse cx="${vx+415}" cy="${vy+175}" rx="13" ry="16"/>
+    <ellipse cx="${vx+355}" cy="${vy+205}" rx="14" ry="17"/>
+    <ellipse cx="${vx+395}" cy="${vy+238}" rx="13" ry="16"/>
+    <ellipse cx="${vx+360}" cy="${vy+272}" rx="12" ry="15"/>
   </g>
-  <text x="${vx+370}" y="${vy+185}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#0e2806">Lord's Wood</text>
+  <text x="${vx+390}" y="${vy+185}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#0e2806">Lord's Wood</text>
 </g>
 
-<!-- ── MEADOW S ── -->
+<!-- MEADOW S — entire bottom band below lots 7,8,9 -->
 <g id="${svgId}-meadow" class="mz" data-char="${charName}" data-key="meadow" style="cursor:pointer">
-  <polygon points="${vx-180},${vy+220} ${vx-30},${vy+230} ${vx+100},${vy+260} ${vx+220},${H} 0,${H}" fill="${t.meadow}" stroke="#3a6820" stroke-width="1"/>
-  <polygon points="${vx-180},${vy+220} ${vx-30},${vy+230} ${vx+100},${vy+260} ${vx+220},${H} 0,${H}" fill="url(#mp-pd${charName})" opacity="0.7"/>
-  <text x="${vx-40}" y="${vy+310}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="12" fill="#1e3a10">The Meadow</text>
+  <polygon points="
+    0,${H}               ${vx+220},${H}
+    ${vx+100},${vy+260}  ${vx+100},${vy+230}
+    ${vx-30},${vy+230}   ${vx-180},${vy+220}
+    ${vx-220},${vy+100}  0,${H}
+  " fill="${t.meadow}" stroke="#3a6820" stroke-width="1"/>
+  <polygon points="
+    0,${H}               ${vx+220},${H}
+    ${vx+100},${vy+260}  ${vx+100},${vy+230}
+    ${vx-30},${vy+230}   ${vx-180},${vy+220}
+    ${vx-220},${vy+100}  0,${H}
+  " fill="url(#mp-pd${charName})" opacity="0.7"/>
+  <text x="${vx-30}" y="${vy+330}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="12" fill="#1e3a10">The Meadow</text>
 </g>
 
-<!-- ── WASTE SW/W ── -->
-<g id="${svgId}-waste" class="mz" data-char="${charName}" data-key="waste" style="cursor:pointer">
-  <polygon points="0,${vy-230} 0,0 ${vx-180},0 ${vx-180},${vy-230}" fill="${t.waste}" stroke="#686828" stroke-width="1"/>
-  <polygon points="0,${vy+390} 0,${vy-230} ${vx-180},${vy-230} ${vx-260},${vy+0} ${vx-220},${vy+100} ${vx-180},${vy+220} 0,${H}" fill="${t.waste}" stroke="#686828" stroke-width="1"/>
-  <text x="${vx-310}" y="${vy+50}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#484818">Waste</text>
+<!-- WASTE W — left band, one clean polygon covering entire left edge -->
+<g id="${svgId}-waste" class="mz" data-key="waste" data-char="${charName}" style="cursor:pointer">
+  <polygon points="
+    0,0              ${vx-180},0
+    ${vx-100},${vy-180}  ${vx-180},${vy-230}
+    0,${vy-230}
+  " fill="${t.waste}" stroke="#686828" stroke-width="1"/>
+  <polygon points="
+    0,${vy-230}          ${vx-180},${vy-230}
+    ${vx-100},${vy-180}  ${vx-160},${vy-100}
+    ${vx-220},${vy-80}   ${vx-260},${vy}
+    ${vx-220},${vy+100}  ${vx-180},${vy+220}
+    0,${H}
+  " fill="${t.waste}" stroke="#686828" stroke-width="1"/>
+  <text x="${vx-310}" y="${vy+40}" text-anchor="middle" font-family="'IM Fell English',serif" font-style="italic" font-size="11" fill="#484818">Waste</text>
 </g>
 
 <!-- ── ROADS ── -->
 ${roadSvg(cfg.roads)}
 
-<!-- ── RIVER ── -->
-<!-- River shadow -->
-<path d="${rp.path}" fill="none" stroke="${cfg.river.color}" stroke-width="${cfg.river.width+3}" opacity="0.2" stroke-linecap="round"/>
-<!-- River main -->
-<path d="${rp.path}" fill="none" stroke="${cfg.river.color}" stroke-width="${cfg.river.width}" opacity="0.75" stroke-linecap="round"/>
-<!-- River highlight -->
-<path d="${rp.path}" fill="none" stroke="#a8d0f0" stroke-width="${Math.max(1,cfg.river.width-2)}" opacity="0.3" stroke-linecap="round" stroke-dasharray="20,15"/>
-<!-- River label -->
-<text font-family="'IM Fell English',serif" font-style="italic" font-size="10" fill="${cfg.river.color}" opacity="0.9">
-  <textPath href="#${svgId}-riverpath" startOffset="30%">${cfg.river.name}</textPath>
-</text>
-<path id="${svgId}-riverpath" d="${rp.path}" fill="none" stroke="none"/>
-
-<!-- ── MILL POND + STREAM ── -->
+<!-- ── MILL POND + STREAM (drawn before river so river goes on top) ── -->
 <g id="${svgId}-mill" class="mz" data-char="${charName}" data-key="mill" style="cursor:pointer">
   <ellipse cx="${millX}" cy="${millY}" rx="32" ry="22" fill="#6898b8" stroke="#285878" stroke-width="0.9" opacity="0.85"/>
   <ellipse cx="${millX}" cy="${millY}" rx="20" ry="12" fill="none" stroke="#4878a0" stroke-width="0.5" opacity="0.5"/>
@@ -3136,33 +3315,95 @@ ${roadSvg(cfg.roads)}
 <!-- Stream to river -->
 <path d="${streamPath}" fill="none" stroke="${cfg.river.color}" stroke-width="2" opacity="0.45" stroke-linecap="round"/>
 
+<!-- ── RIVER — drawn after landscape so it sits on top ── -->
+<path d="${rp.path}" fill="none" stroke="${cfg.river.color}" stroke-width="${cfg.river.width+3}" opacity="0.18" stroke-linecap="round"/>
+<path d="${rp.path}" fill="none" stroke="${cfg.river.color}" stroke-width="${cfg.river.width}" opacity="0.78" stroke-linecap="round"/>
+<path d="${rp.path}" fill="none" stroke="#b8e0f8" stroke-width="${Math.max(1,cfg.river.width-2)}" opacity="0.28" stroke-linecap="round" stroke-dasharray="20,15"/>
+<text font-family="'IM Fell English',serif" font-style="italic" font-size="10" fill="${cfg.river.color}" opacity="0.9">
+  <textPath href="#${svgId}-riverpath" startOffset="30%">${cfg.river.name}</textPath>
+</text>
+<path id="${svgId}-riverpath" d="${rp.path}" fill="none" stroke="none"/>
+
 <!-- ── VILLAGE ── -->
 <g id="${svgId}-village" class="mz" data-char="${charName}" data-key="village" style="cursor:pointer">
   <polygon points="${vPoly}" fill="${t.village}" stroke="#7a5010" stroke-width="1.5"/>
-  <ellipse cx="${vx}" cy="${vy+5}" rx="28" ry="22" fill="${t.field2}" opacity="0.4"/>
-  <!-- houses — 20 buildings in organic clusters -->
-  <g fill="#6a3e10" stroke="#3a1e06" stroke-width="0.6">
-    <rect x="${vx-56}" y="${vy-68}" width="12" height="10" rx="1"/><polygon points="${vx-56},${vy-68} ${vx-44},${vy-68} ${vx-50},${vy-77}" fill="#4a2a08"/>
-    <rect x="${vx-40}" y="${vy-74}" width="12" height="10" rx="1"/><polygon points="${vx-40},${vy-74} ${vx-28},${vy-74} ${vx-34},${vy-83}" fill="#4a2a08"/>
-    <rect x="${vx-22}" y="${vy-78}" width="12" height="10" rx="1"/><polygon points="${vx-22},${vy-78} ${vx-10},${vy-78} ${vx-16},${vy-87}" fill="#4a2a08"/>
-    <rect x="${vx-4}" y="${vy-78}" width="12" height="10" rx="1"/><polygon points="${vx-4},${vy-78} ${vx+8},${vy-78} ${vx+2},${vy-87}" fill="#4a2a08"/>
-    <rect x="${vx+14}" y="${vy-76}" width="12" height="10" rx="1"/><polygon points="${vx+14},${vy-76} ${vx+26},${vy-76} ${vx+20},${vy-85}" fill="#4a2a08"/>
-    <rect x="${vx+30}" y="${vy-70}" width="12" height="10" rx="1"/><polygon points="${vx+30},${vy-70} ${vx+42},${vy-70} ${vx+36},${vy-79}" fill="#4a2a08"/>
-    <rect x="${vx-60}" y="${vy-54}" width="12" height="10" rx="1"/><polygon points="${vx-60},${vy-54} ${vx-48},${vy-54} ${vx-54},${vy-63}" fill="#4a2a08"/>
-    <rect x="${vx+46}" y="${vy-56}" width="12" height="10" rx="1"/><polygon points="${vx+46},${vy-56} ${vx+58},${vy-56} ${vx+52},${vy-65}" fill="#4a2a08"/>
-    <rect x="${vx-66}" y="${vy-36}" width="12" height="10" rx="1"/><polygon points="${vx-66},${vy-36} ${vx-54},${vy-36} ${vx-60},${vy-45}" fill="#4a2a08"/>
-    <rect x="${vx+56}" y="${vy-34}" width="12" height="10" rx="1"/><polygon points="${vx+56},${vy-34} ${vx+68},${vy-34} ${vx+62},${vy-43}" fill="#4a2a08"/>
-    <rect x="${vx-68}" y="${vy-14}" width="12" height="10" rx="1"/><polygon points="${vx-68},${vy-14} ${vx-56},${vy-14} ${vx-62},${vy-23}" fill="#4a2a08"/>
-    <rect x="${vx+60}" y="${vy-12}" width="12" height="10" rx="1"/><polygon points="${vx+60},${vy-12} ${vx+72},${vy-12} ${vx+66},${vy-21}" fill="#4a2a08"/>
-    <rect x="${vx-68}" y="${vy+6}" width="12" height="10" rx="1"/><polygon points="${vx-68},${vy+6} ${vx-56},${vy+6} ${vx-62},${vy-3}" fill="#4a2a08"/>
-    <rect x="${vx+60}" y="${vy+8}" width="12" height="10" rx="1"/><polygon points="${vx+60},${vy+8} ${vx+72},${vy+8} ${vx+66},${vy-1}" fill="#4a2a08"/>
-    <rect x="${vx-62}" y="${vy+24}" width="12" height="10" rx="1"/><polygon points="${vx-62},${vy+24} ${vx-50},${vy+24} ${vx-56},${vy+15}" fill="#4a2a08"/>
-    <rect x="${vx+50}" y="${vy+26}" width="12" height="10" rx="1"/><polygon points="${vx+50},${vy+26} ${vx+62},${vy+26} ${vx+56},${vy+17}" fill="#4a2a08"/>
-    <rect x="${vx-50}" y="${vy+40}" width="12" height="10" rx="1"/><polygon points="${vx-50},${vy+40} ${vx-38},${vy+40} ${vx-44},${vy+31}" fill="#4a2a08"/>
-    <rect x="${vx-30}" y="${vy+50}" width="12" height="10" rx="1"/><polygon points="${vx-30},${vy+50} ${vx-18},${vy+50} ${vx-24},${vy+41}" fill="#4a2a08"/>
-    <rect x="${vx-8}" y="${vy+52}" width="12" height="10" rx="1"/><polygon points="${vx-8},${vy+52} ${vx+4},${vy+52} ${vx-2},${vy+43}" fill="#4a2a08"/>
-    <rect x="${vx+14}" y="${vy+50}" width="12" height="10" rx="1"/><polygon points="${vx+14},${vy+50} ${vx+26},${vy+50} ${vx+20},${vy+41}" fill="#4a2a08"/>
+  <!-- Village green — muddy central area -->
+  <ellipse cx="${vx-5}" cy="${vy+8}" rx="32" ry="25" fill="#c0a858" opacity="0.35"/>
+
+  <!-- PATHS — main street N-S, cross track E-W, a few lanes -->
+  <path d="M${vx-4},${vy-92} Q${vx+3},${vy-40} ${vx},${vy+10} Q${vx-5},${vy+45} ${vx-8},${vy+75}" fill="none" stroke="#a08840" stroke-width="3.5" opacity="0.35" stroke-linecap="round"/>
+  <path d="M${vx-70},${vy-8} Q${vx-30},${vy+5} ${vx+5},${vy+8} Q${vx+40},${vy+10} ${vx+72},${vy+0}" fill="none" stroke="#a08840" stroke-width="2.5" opacity="0.3" stroke-linecap="round"/>
+  <path d="M${vx-60},${vy-50} Q${vx-30},${vy-35} ${vx-5},${vy-38}" fill="none" stroke="#a08840" stroke-width="1.8" opacity="0.25" stroke-linecap="round"/>
+  <path d="M${vx+10},${vy-38} Q${vx+35},${vy-42} ${vx+60},${vy-30}" fill="none" stroke="#a08840" stroke-width="1.8" opacity="0.25" stroke-linecap="round"/>
+  <path d="M${vx-40},${vy+40} Q${vx-18},${vy+35} ${vx-8},${vy+28}" fill="none" stroke="#a08840" stroke-width="1.5" opacity="0.22" stroke-linecap="round"/>
+
+  <!-- HUTS — varied sizes, shapes, angles, crambled organically -->
+  <!-- Large longhouse N -->
+  <g transform="rotate(-8,${vx-18},${vy-64})">
+    <rect x="${vx-34}" y="${vy-72}" width="32" height="14" rx="1" fill="#7a4818" stroke="#3a1e06" stroke-width="0.7"/>
+    <polygon points="${vx-34},${vy-72} ${vx-2},${vy-72} ${vx-18},${vy-83}" fill="#5a3210"/>
   </g>
+  <!-- Small hut NW -->
+  <g transform="rotate(5,${vx-48},${vy-56})">
+    <rect x="${vx-56}" y="${vy-62}" width="16" height="12" rx="1" fill="#6a3e10" stroke="#3a1e06" stroke-width="0.6"/>
+    <polygon points="${vx-56},${vy-62} ${vx-40},${vy-62} ${vx-48},${vy-72}" fill="#4a2808"/>
+  </g>
+  <!-- Medium hut NE -->
+  <g transform="rotate(-12,${vx+28},${vy-60})">
+    <rect x="${vx+18}" y="${vy-68}" width="20" height="13" rx="1" fill="#7a4818" stroke="#3a1e06" stroke-width="0.6"/>
+    <polygon points="${vx+18},${vy-68} ${vx+38},${vy-68} ${vx+28},${vy-79}" fill="#5a3210"/>
+  </g>
+  <!-- Wide byre NNE -->
+  <g transform="rotate(6,${vx+50},${vy-48})">
+    <rect x="${vx+42}" y="${vy-55}" width="24" height="10" rx="1" fill="#6a4018" stroke="#3a1e06" stroke-width="0.6"/>
+    <polygon points="${vx+42},${vy-55} ${vx+66},${vy-55} ${vx+54},${vy-64}" fill="#4a2a08"/>
+  </g>
+  <!-- Tiny hut W -->
+  <g transform="rotate(-4,${vx-58},${vy-30})">
+    <rect x="${vx-66}" y="${vy-36}" width="14" height="10" rx="1" fill="#6a3a10" stroke="#3a1e06" stroke-width="0.6"/>
+    <polygon points="${vx-66},${vy-36} ${vx-52},${vy-36} ${vx-59},${vy-45}" fill="#4a2808"/>
+  </g>
+  <!-- Medium hut E -->
+  <g transform="rotate(10,${vx+60},${vy-22})">
+    <rect x="${vx+52}" y="${vy-28}" width="18" height="12" rx="1" fill="#704018" stroke="#3a1e06" stroke-width="0.6"/>
+    <polygon points="${vx+52},${vy-28} ${vx+70},${vy-28} ${vx+61},${vy-38}" fill="#4e2a08"/>
+  </g>
+  <!-- Angled longhouse W mid -->
+  <g transform="rotate(-15,${vx-52},${vy+5})">
+    <rect x="${vx-70}" y="${vy}" width="36" height="12" rx="1" fill="#7a4418" stroke="#3a1e06" stroke-width="0.7"/>
+    <polygon points="${vx-70},${vy} ${vx-34},${vy} ${vx-52},${vy-11}" fill="#5a3010"/>
+  </g>
+  <!-- Small hut E mid -->
+  <g transform="rotate(8,${vx+58},${vy+10})">
+    <rect x="${vx+50}" y="${vy+4}" width="15" height="11" rx="1" fill="#6a3c10" stroke="#3a1e06" stroke-width="0.6"/>
+    <polygon points="${vx+50},${vy+4} ${vx+65},${vy+4} ${vx+57.5},${vy-5}" fill="#4a2808"/>
+  </g>
+  <!-- Medium hut SW -->
+  <g transform="rotate(12,${vx-45},${vy+36})">
+    <rect x="${vx-58}" y="${vy+29}" width="26" height="13" rx="1" fill="#744018" stroke="#3a1e06" stroke-width="0.6"/>
+    <polygon points="${vx-58},${vy+29} ${vx-32},${vy+29} ${vx-45},${vy+18}" fill="#542e08"/>
+  </g>
+  <!-- Tiny hut S -->
+  <g transform="rotate(-6,${vx-10},${vy+52})">
+    <rect x="${vx-18}" y="${vy+46}" width="13" height="10" rx="1" fill="#643a10" stroke="#3a1e06" stroke-width="0.5"/>
+    <polygon points="${vx-18},${vy+46} ${vx-5},${vy+46} ${vx-11.5},${vy+37}" fill="#482808"/>
+  </g>
+  <!-- Wide barn SE -->
+  <g transform="rotate(5,${vx+15},${vy+46})">
+    <rect x="${vx+4}" y="${vy+40}" width="28" height="12" rx="1" fill="#7a4a18" stroke="#3a1e06" stroke-width="0.7"/>
+    <polygon points="${vx+4},${vy+40} ${vx+32},${vy+40} ${vx+18},${vy+29}" fill="#5a3410"/>
+  </g>
+  <!-- Extra hut NNW -->
+  <g transform="rotate(-10,${vx-32},${vy-50})">
+    <rect x="${vx-40}" y="${vy-56}" width="17" height="11" rx="1" fill="#6e3e10" stroke="#3a1e06" stroke-width="0.6"/>
+    <polygon points="${vx-40},${vy-56} ${vx-23},${vy-56} ${vx-31},${vy-66}" fill="#4c2a08"/>
+  </g>
+  <!-- Extra small hut E south -->
+  <g transform="rotate(4,${vx+48},${vy+28})">
+    <rect x="${vx+42}" y="${vy+22}" width="14" height="10" rx="1" fill="#663c10" stroke="#3a1e06" stroke-width="0.5"/>
+    <polygon points="${vx+42},${vy+22} ${vx+56},${vy+22} ${vx+49},${vy+13}" fill="#4a2808"/>
+  </g>
+
   <text x="${vx}" y="${vy+82}" text-anchor="middle" font-family="'Cinzel',serif" font-size="11.5" fill="#1e0e04" letter-spacing="0.04em">The Village</text>
 </g>
 
@@ -3278,7 +3519,12 @@ function initManorMap(charName) {
   svg.querySelectorAll('.mz').forEach(z => {
     const key = z.dataset.key;
     const ch  = z.dataset.char;
-    const d   = MANOR_ZONE_DATA[key];
+
+    // Improvement buildings carry their own tooltip data in attributes
+    const isImprov = key && key.startsWith('improv-');
+    const d = isImprov
+      ? { name: z.dataset.improvName, text: z.dataset.improvText, raidable: false }
+      : MANOR_ZONE_DATA[key];
     if (!d) return;
 
     z.addEventListener('mouseenter', e => {
@@ -3383,7 +3629,8 @@ function renderEstatesTopLevel(){
   const subTabStyle = (k) => `font-family:'Cinzel',serif;font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;padding:.38rem .9rem;border:none;cursor:pointer;transition:all .2s;background:${estateSubTab===k?'rgba(184,144,42,.15)':'transparent'};color:${estateSubTab===k?'#d4aa45':'#8a7040'};border-bottom:2px solid ${estateSubTab===k?'var(--gold)':'transparent'}`;
 
   const mapContent   = estateSubTab==='map'         ? `<div style="padding:0">${renderManorMapSVG(activeFamilyTab)}</div>` : '';
-  const bookContent  = estateSubTab==='bookkeeping' ? `<div style="padding:1.2rem 1.4rem">${renderEstatesPanel(activeFamilyTab)}</div>` : '';
+  const bookHtml     = estateSubTab==='bookkeeping' ? renderEstatesPanel(activeFamilyTab) : '';
+  const bookContent  = estateSubTab==='bookkeeping' ? '<div style="padding:1.2rem 1.4rem" id="bookkeepingPanel"></div>' : '';
 
   panel.innerHTML = `
     <div style="background:var(--parchment);border:1px solid var(--parchment-shadow);border-radius:4px;box-shadow:4px 4px 0 rgba(0,0,0,.4);overflow:hidden;animation:unfurl .3s ease">
@@ -3398,6 +3645,10 @@ function renderEstatesTopLevel(){
     </div>`;
 
   if (estateSubTab==='map') setTimeout(()=>initManorMap(activeFamilyTab), 60);
+  if (estateSubTab==='bookkeeping') {
+    const bp = document.getElementById('bookkeepingPanel');
+    if (bp) bp.innerHTML = bookHtml;
+  }
 }
 
 function renderEstatesPanel(charName) {
