@@ -275,19 +275,18 @@ const TREE_DATA = {
     "generations": [
       [
         {
-          "id": "gp_pat",
-          "label": "Paternal\nGrandparents",
-          "status": "dead",
-          "ghost": true
-        },
-        {
           "id": "great_unc_pat",
           "label": "Maelgwn",
           "role": "Great-Uncle · Knight",
           "status": "alive",
-          "age": "55+",
-          "glory": "8420",
-          "parentId": "gp_pat"
+          "age": "82",
+          "glory": "8420"
+        },
+        {
+          "id": "gp_pat",
+          "label": "Paternal\nGrandparents",
+          "status": "dead",
+          "ghost": true
         },
         {
           "id": "gp_mat",
@@ -302,50 +301,46 @@ const TREE_DATA = {
           "label": "Glewlwyd",
           "role": "Paternal Uncle",
           "status": "alive",
-          "age": "45+",
-          "note": "Illegit.",
-          "parentId": "great_unc_pat"
+          "age": "52",
+          "parentId": "gp_pat"
         },
         {
           "id": "unc_b",
           "label": "Glinneu",
           "role": "Paternal Uncle",
           "status": "alive",
-          "age": "45+",
-          "note": "Illegit.",
-          "parentId": "great_unc_pat"
+          "age": "51",
+          "parentId": "gp_pat"
         },
         {
           "id": "unc_c",
           "label": "Gwallawg",
           "role": "Paternal Uncle",
           "status": "alive",
-          "age": "45+",
-          "note": "Illegit.",
-          "parentId": "great_unc_pat"
+          "age": "50",
+          "parentId": "gp_pat"
         },
         {
           "id": "unc_d",
           "label": "Gwenddoleu",
           "role": "Paternal Uncle",
           "status": "alive",
-          "age": "45+",
-          "note": "Illegit.",
-          "parentId": "great_unc_pat"
+          "age": "49",
+          "parentId": "gp_pat"
         },
         {
           "id": "aunt_e",
           "label": "Arddun",
           "role": "Paternal Aunt",
           "status": "alive",
-          "age": "45+",
-          "parentId": "great_unc_pat"
+          "age": "49",
+          "parentId": "gp_pat"
         },
         {
           "id": "gwe_father",
           "label": "Gwgawn",
           "role": "Father · Knight",
-          "status": "dead",
+          "status": "alive",
           "age": "46",
           "parentId": "gp_pat",
           "isfather": true
@@ -364,6 +359,7 @@ const TREE_DATA = {
           "label": "Cyngar",
           "role": "Maternal Uncle · Knight",
           "status": "alive",
+          "age": "47",
           "parentId": "gp_mat"
         },
         {
@@ -371,20 +367,21 @@ const TREE_DATA = {
           "label": "Gwrfoddw",
           "role": "Maternal Uncle",
           "status": "alive",
+          "age": "45",
           "parentId": "gp_mat"
         },
         {
           "id": "unc_g",
           "label": "Gwriad",
           "role": "Maternal Uncle",
-          "status": "alive",
+          "status": "dead",
           "parentId": "gp_mat"
         },
         {
           "id": "unc_h",
           "label": "Gwydre",
           "role": "Maternal Uncle",
-          "status": "dead",
+          "status": "alive",
           "age": "45",
           "parentId": "gp_mat"
         },
@@ -392,14 +389,14 @@ const TREE_DATA = {
           "id": "aunt_i",
           "label": "Ellylw",
           "role": "Maternal Aunt",
-          "status": "alive",
+          "status": "dead",
           "parentId": "gp_mat"
         },
         {
           "id": "aunt_j",
           "label": "Gwaeddan",
           "role": "Maternal Aunt",
-          "status": "dead",
+          "status": "alive",
           "age": "42",
           "parentId": "gp_mat"
         }
