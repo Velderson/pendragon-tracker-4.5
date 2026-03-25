@@ -398,9 +398,10 @@ const TREE_DATA = {
           "id": "aunt_j",
           "label": "Gwaeddan",
           "role": "Maternal Aunt",
-          "status": "alive",
-          "age": "42",
-          "parentId": "gp_mat"
+          "status": "dead",
+          "age": "43",
+          "parentId": "gp_mat",
+          "note": "Died 490 · Decrepitude"
         }
       ],
       [
@@ -423,6 +424,15 @@ const TREE_DATA = {
           "label": "Ceinwen",
           "status": "alive",
           "parentId": "unc_a"
+        },
+        {
+          "id": "ceinwen_dau1",
+          "label": "(unnamed)",
+          "role": "Daughter of Ceinwen",
+          "status": "alive",
+          "age": "0",
+          "parentId": "cp_a_f2",
+          "note": "Born 490 · Healthy girl"
         },
         {
           "id": "cp_b1",
@@ -573,6 +583,15 @@ const TREE_DATA = {
           "parentId": "unc_g"
         },
         {
+          "id": "eluned_son1",
+          "label": "(unnamed)",
+          "role": "Son of Eluned",
+          "status": "alive",
+          "age": "0",
+          "parentId": "cm_g_f5",
+          "note": "Born 490 · SICKLY boy"
+        },
+        {
           "id": "cm_h_f1",
           "label": "Mabli",
           "status": "alive",
@@ -645,6 +664,26 @@ const TREE_DATA = {
           "status": "alive",
           "spouseOf": "pc",
           "glory": 740
+        },
+        {
+          "id": "anarawd",
+          "label": "Anarawd",
+          "role": "Concubine · Sister of Sir Padern",
+          "status": "alive",
+          "age": "26",
+          "spouseOf": "pc",
+          "note": "Fear (Elves)"
+        }
+,
+        {
+          "id": "anarawd_dau1",
+          "label": "(unnamed)",
+          "role": "Illegitimate Daughter of Anarawd",
+          "status": "alive",
+          "age": "0",
+          "parentId": "pc",
+          "illegitimate": true,
+          "note": "Born 490 · Healthy girl · Mother: Anarawd"
         }
       ]
     ],
