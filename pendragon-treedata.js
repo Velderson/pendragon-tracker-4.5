@@ -1,1 +1,901 @@
-const FAMILIES = {"Rhydian": [{"status": "Status", "relation": "Relation", "role": "Role", "name": "Name", "glory": "Glory", "age": "Age", "misc": "Misc"}, {"status": "Alive", "relation": "Wife", "role": "", "name": "Heledd", "glory": "", "age": "20", "misc": "courageous but reckless,"}, {"status": "Alive", "relation": "Son", "role": "", "name": "Cattegirn", "glory": "", "age": "1", "misc": ""}, {"status": "Alive", "relation": "Daughter", "role": "", "name": "Aeres", "glory": "", "age": "0", "misc": ""}, {"status": "Alive", "relation": "Son", "role": "", "name": "Glast", "glory": "", "age": "0", "misc": ""}, {"status": "Unknown", "relation": "Unknown (mystery)", "role": "Knight", "name": "Iorwerth", "glory": "", "age": "", "misc": "Unclear family connection"}, {"status": "Dead", "relation": "Mother", "role": "", "name": "Cwyllog", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Oncle Paternal", "role": "Knight", "name": "Cadfan", "glory": "", "age": "33", "misc": "Married"}, {"status": "Alive", "relation": "Cousin Paternal", "role": "Squire", "name": "Vaddon", "glory": "", "age": "22", "misc": ""}, {"status": "Alive", "relation": "Oncle Paternal", "role": "Knight", "name": "Cadfan", "glory": "", "age": "26", "misc": "Married"}, {"status": "Alive", "relation": "Aunt Paternal", "role": "", "name": "Gwenabwy", "glory": "", "age": "31", "misc": ""}, {"status": "Dead", "relation": "Aunt Paternal", "role": "", "name": "Leri", "glory": "", "age": "28", "misc": ""}, {"status": "Alive", "relation": "Cousin Paternal (F)", "role": "", "name": "Tegfan", "glory": "", "age": "11", "misc": ""}, {"status": "", "relation": "Cousin Paternal (F)", "role": "", "name": "Morfwen", "glory": "", "age": "9", "misc": ""}, {"status": "", "relation": "Cousin Paternal (F)", "role": "", "name": "Heilwen", "glory": "", "age": "8", "misc": ""}, {"status": "", "relation": "Cousin Paternal (F)", "role": "", "name": "Anest", "glory": "", "age": "6", "misc": ""}, {"status": "", "relation": "Cousin Paternal", "role": "", "name": "Ryrid", "glory": "", "age": "4", "misc": ""}, {"status": "Alive", "relation": "Cousin Paternal (F)", "role": "", "name": "Gwenith", "glory": "", "age": "2", "misc": ""}, {"status": "Alive", "relation": "Oncle Father of half Orphand Cousins", "role": "", "name": "Hywel", "glory": "", "age": "36", "misc": ""}, {"status": "Dead", "relation": "Oncle Maternal", "role": "Knight", "name": "Erfyn", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "", "role": "", "name": "Cousin Maternal (F) 1", "glory": "", "age": "10", "misc": ""}, {"status": "Dead", "relation": "Aunt Maternal", "role": "", "name": "Iorwenna", "glory": "", "age": "30", "misc": ""}, {"status": "Alive", "relation": "Cousin Maternal (F)", "role": "", "name": "Seiriol", "glory": "", "age": "11", "misc": ""}, {"status": "Alive", "relation": "Cousin Maternal (F)", "role": "", "name": "Tegwared", "glory": "", "age": "9", "misc": ""}, {"status": "Alive", "relation": "Cousin Maternal (F)", "role": "", "name": "Celain", "glory": "", "age": "7", "misc": ""}, {"status": "Alive", "relation": "Oncle Maternal Father of Orphan Girls", "role": "Knight", "name": "Dyfnwal", "glory": "", "age": "33", "misc": ""}, {"status": "Alive", "relation": "Oncle Maternal", "role": "Knight", "name": "Maelog", "glory": "", "age": "24", "misc": ""}, {"status": "Alive", "relation": "Oncle Maternal", "role": "Knight", "name": "Dinan", "glory": "", "age": "40", "misc": ""}, {"status": "Alive", "relation": "Cousin Maternal (F)", "role": "", "name": "Gwenwyn", "glory": "", "age": "21", "misc": ""}, {"status": "Alive", "relation": "Cousin Maternal", "role": "Squire", "name": "Gromer", "glory": "", "age": "20", "misc": ""}, {"status": "Alive", "relation": "Cousin Maternal", "role": "Squire", "name": "Ifan", "glory": "", "age": "18", "misc": ""}], "Gwegon": [{"status": "Status", "relation": "Relation", "role": "Role", "name": "Name", "glory": "Glory", "age": "Age", "misc": "Misc"}, {"name": "Lady Adwen", "relation": "Wife", "status": "Alive", "role": "Lady of Allington", "age": "22", "glory": "740", "misc": ""}, {"status": "Alive", "relation": "Brother", "role": "Squire", "name": "Marchlew", "glory": "500", "age": "21", "misc": ""}, {"status": "Dead", "relation": "Father", "role": "Knight", "name": "Gwgawn", "glory": "", "age": "45", "misc": ""}, {"status": "Alive", "relation": "Mother", "role": "", "name": "Glesni", "glory": "", "age": "42", "misc": ""}, {"status": "Alive", "relation": "Great Oncle Paternal", "role": "Knight", "name": "Maelgwn", "glory": "8420", "age": "55+", "misc": "illegitimate"}, {"status": "Alive", "relation": "Oncle Paternal", "role": "", "name": "Glewlwyd", "glory": "", "age": "45+", "misc": "illegitimate"}, {"status": "Alive", "relation": "Oncle Paternal", "role": "", "name": "Glinneu", "glory": "", "age": "45+", "misc": "illegitimate"}, {"status": "Alive", "relation": "Oncle Paternal", "role": "", "name": "Gwallawg", "glory": "", "age": "45+", "misc": "illegitimate"}, {"status": "Alive", "relation": "Oncle Paternal", "role": "", "name": "Gwenddoleu", "glory": "", "age": "45+", "misc": "illegitimate"}, {"status": "Alive", "relation": "Aunt Paternal", "role": "", "name": "Arddun", "glory": "", "age": "45+", "misc": ""}, {"status": "Alive", "relation": "Oncle Maternal", "role": "Knight", "name": "Cyngar", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Oncle Maternal", "role": "", "name": "Gwrfoddw", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Oncle Maternal", "role": "", "name": "Gwriad", "glory": "", "age": "", "misc": ""}, {"status": "Dead", "relation": "Oncle Maternal", "role": "", "name": "Gwydre", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Aunt Maternal", "role": "", "name": "Ellylw", "glory": "", "age": "", "misc": ""}, {"status": "Dead", "relation": "Aunt Maternal", "role": "", "name": "Gwaeddan", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin P. (Son of Glewlwyd)", "role": "", "name": "Gogyvwlch", "glory": "", "age": "22", "misc": ""}, {"status": "Alive", "relation": "Cousin P. (Daughter of Glewlwyd)", "role": "", "name": "Gwenfrewy", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin P. (Daughter of Glewlwyd)", "role": "", "name": "Ceinwen", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin P. (Son of Glinneu)", "role": "", "name": "Caradog", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin P. (Son of Glinneu)", "role": "", "name": "Cadrawd", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin P. (Son of Gwallawg)", "role": "", "name": "Einion", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin P. (Son of Gwenddoleu)", "role": "", "name": "Rhufon", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin P. (Son of Gwenddoleu)", "role": "", "name": "Gwair", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin P. (Daughter of Gwenddoleu", "role": "", "name": "Gwenllian", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin P. (Daughter of Gwenddoleu", "role": "", "name": "Teleri", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin P. (Son of Arddun)", "role": "", "name": "Preiddin", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin P. (Daughter of Arddun)", "role": "", "name": "Morfudd", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin P. (Daughter of Arddun)", "role": "", "name": "Ffraid", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin P. (Daughter of Arddun)", "role": "", "name": "Annwyl", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin P. (Daughter of Arddun)", "role": "", "name": "Bradwen", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin M. (Son of Gwrfoddw)", "role": "", "name": "Caerwyn", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin M. (Daughter of Gwrfoddw)", "role": "", "name": "Tanwen", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin M. (Daughter of Gwrfoddw)", "role": "", "name": "Morwenna", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin M. (Daughter of Gwrfoddw)", "role": "", "name": "Lleucu", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin M (Son of Gwriad)", "role": "", "name": "Cynhaval", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin M. (Daughter of Gwriad)", "role": "", "name": "Dwynwen", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin M. (Daughter of Gwriad)", "role": "", "name": "Elen", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin M. (Daughter of Gwriad)", "role": "", "name": "Tesni", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin M. (Daughter of Gwriad)", "role": "", "name": "Tegeirian", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin M. (Daughter of Gwriad)", "role": "", "name": "Eluned", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin M (Daughter of Gwydre)", "role": "", "name": "Mabli", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin M (Daughter of Gwydre)", "role": "", "name": "Alarch", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin M (Daughter of Gwydre)", "role": "", "name": "Nesta", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin M (Son of Ellylw)", "role": "", "name": "Erfai", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin M (Son of Ellylw)", "role": "", "name": "Emyr", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin M (Daughter of Ellylw)", "role": "", "name": "Gwerful", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin M (Son of Gwaeddan)", "role": "", "name": "Edern", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin M (Son of Gwaeddan)", "role": "", "name": "Enniaun", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin M (Daughter of Gwaeddan)", "role": "", "name": "Creirwy", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin M (Daughter of Gwaeddan)", "role": "", "name": "Essyllt", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin M (Daughter of Gwaeddan)", "role": "", "name": "Hunydd", "glory": "", "age": "", "misc": ""}], "Timotheus": [{"name": "Lady Indeg", "relation": "Wife", "status": "Alive", "role": "Lady of Tidcombe", "age": "24", "glory": "4140", "misc": "Exceptional glory for a lady"}, {"status": "Status", "relation": "Relation", "role": "Role", "name": "Name", "glory": "Glory", "age": "Age", "misc": "Misc"}, {"status": "Dead", "relation": "Father", "role": "Knight", "name": "Crautreic", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Mother", "role": "", "name": "Cynfarch", "glory": "", "age": "39", "misc": ""}, {"status": "Alive", "relation": "Oncle Paternal", "role": "Knight", "name": "Aeron ap Cadoc", "glory": "1420", "age": "43", "misc": ""}, {"status": "Alive", "relation": "Oncle Maternal", "role": "Knight", "name": "Deort", "glory": "1222", "age": "33", "misc": ""}, {"status": "Alive", "relation": "Oncle Maternal", "role": "Knight", "name": "Owain", "glory": "1120", "age": "30", "misc": ""}, {"status": "Dead", "relation": "Oncle Maternal (Illegitimate)", "role": "Mercenary Knight", "name": "Nwython", "glory": "342", "age": "23", "misc": ""}, {"status": "Alive", "relation": "Aunt Maternal", "role": "", "name": "Tryamour", "glory": "54", "age": "28", "misc": "Widow"}, {"status": "Alive", "relation": "Aunt Maternal", "role": "", "name": "Melior", "glory": "213", "age": "23", "misc": ""}, {"status": "Alive", "relation": "Cousin Paternal (Son of Aeron)", "role": "Squire", "name": "Elian", "glory": "", "age": "22", "misc": ""}, {"status": "Alive", "relation": "Cousin Mertnal (illegitim Son of Owain)", "role": "", "name": "Mynyw", "glory": "", "age": "7", "misc": ""}, {"status": "Alive", "relation": "Brother", "role": "Squire", "name": "Maeon", "glory": "", "age": "18", "misc": ""}, {"status": "Alive", "relation": "Brother", "role": "Squire", "name": "Meilyr", "glory": "", "age": "16", "misc": ""}, {"status": "Alive", "relation": "Brother", "role": "Squire", "name": "Meurig", "glory": "", "age": "15", "misc": ""}, {"status": "Alive", "relation": "Brother", "role": "", "name": "Mynyddog", "glory": "", "age": "12", "misc": ""}, {"status": "Alive", "relation": "Sister", "role": "", "name": "Catrin", "glory": "", "age": "9", "misc": ""}, {"status": "Alive", "relation": "Son (Illegitimate)", "role": "", "name": "Nantcol", "glory": "", "age": "2", "misc": "Illegitimate"}, {"status": "Alive", "relation": "Son (Illegitimate)", "role": "", "name": "Olwydd", "glory": "", "age": "3", "misc": "Illegitimate"}, {"status": "Alive", "relation": "Son (Illegitimate)", "role": "", "name": "Peredur", "glory": "", "age": "4", "misc": "Illegitimate"}, {"status": "Alive", "relation": "Daughter (Illegitimate)", "role": "", "name": "Elan", "glory": "", "age": "4", "misc": "Illegitimate"}, {"status": "Alive", "relation": "Daughter (Illegitimate)", "role": "", "name": "Gwerfyl", "glory": "", "age": "3", "misc": "Illegitimate"}, {"status": "Alive", "relation": "Daughter (Illegitimate)", "role": "", "name": "Madryn", "glory": "", "age": "2", "misc": "Illegitimate"}], "Agragan": [{"status": "Status", "relation": "Relation", "role": "Role", "name": "Name", "glory": "Glory", "age": "Age", "misc": "Misc"}, {"status": "Alive", "relation": "Wife", "role": "", "name": "Lady Gwiona", "glory": "856", "age": "24", "misc": ""}, {"status": "Dead", "relation": "Father", "role": "Kight", "name": "Dagodoc", "glory": "2241", "age": "59", "misc": ""}, {"status": "Alive", "relation": "Great Oncle", "role": "Knight", "name": "Govan", "glory": "", "age": "54", "misc": ""}, {"status": "Dead", "relation": "Oncle (Son of Govan)", "role": "Knight", "name": "Sulbiu", "glory": "", "age": "36", "misc": ""}, {"status": "Alive", "relation": "Cousin Maternal", "role": "Knight", "name": "Sir Eudav", "glory": "", "age": "30", "misc": "Cheated in Oratorie"}, {"status": "Alive", "relation": "Cousin Paternal (Son of Sulbiu)", "role": "Squire", "name": "Gilber", "glory": "", "age": "21", "misc": ""}, {"status": "Alive", "relation": "Younger Brother", "role": "Squire", "name": "Gwegon", "glory": "", "age": "23", "misc": ""}, {"status": "Alive", "relation": "Sisters Husband", "role": "Knight", "name": "Sir Cynedyr", "glory": "", "age": "36", "misc": ""}, {"status": "Alive", "relation": "Cousin Paternal", "role": "Knight", "name": "Sir Lovel", "glory": "", "age": "38", "misc": ""}, {"status": "Dead", "relation": "Mother", "role": "Mother", "name": "Bodara", "glory": "", "age": "52", "misc": ""}, {"status": "Alive", "relation": "Squire Personal", "role": "Squire", "name": "Robyn", "glory": "", "age": "18", "misc": ""}, {"status": "", "relation": "", "role": "", "name": "Tegfan", "glory": "", "age": "", "misc": ""}, {"status": "", "relation": "Millers Daughter", "role": "", "name": "", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Squire", "role": "Squire to Sir Gwanon", "name": "Gwenno", "glory": "17", "age": "", "misc": "", "rel": "Squire"}, {"status": "Alive", "relation": "Daughter in Wales", "role": "", "name": "Caer", "glory": "1", "age": "", "misc": ""}, {"status": "", "relation": "", "role": "", "name": "Seren", "glory": "", "age": "", "misc": ""}], "Mellyr": [{"status": "Status", "relation": "Relation", "role": "Role", "name": "Name", "glory": "Glory", "age": "Age", "misc": "Misc"}, {"status": "Alive", "relation": "PC", "role": "Knight", "name": "Mellyr", "glory": "", "age": "21", "misc": "Newton Tony · Spiritual 16 (Pagan)"}, {"status": "Dead", "relation": "Father", "role": "Knight", "name": "Aled", "glory": "", "age": "", "misc": "Valorous 12 · Sword"}, {"status": "Alive", "relation": "Mother", "role": "Lady", "name": "Non", "glory": "", "age": "42", "misc": "Trusting 16 · Stewardship"}, {"status": "Dead", "relation": "Uncle", "role": "Knight", "name": "Gwyn", "glory": "", "age": "", "misc": ""}, {"status": "Alive", "relation": "Cousin (Son of Gwyn)", "role": "Knight", "name": "", "glory": "", "age": "", "misc": "Energetic 14 · Sword"}, {"status": "Alive", "relation": "Cousin (Son of Gwyn)", "role": "Knight", "name": "", "glory": "", "age": "", "misc": "Suspicious 16 · Battle"}, {"status": "Alive", "relation": "Cousin (Son of Gwyn)", "role": "Knight", "name": "", "glory": "", "age": "", "misc": "Prudent 13 · Sword"}, {"status": "Alive", "relation": "Squire", "role": "Squire", "name": "Bledri", "glory": "", "age": "", "misc": "Trusting 13 · Horsemanship"}, {"status": "Alive", "relation": "Manor Priest", "role": "Priest", "name": "", "glory": "", "age": "", "misc": "Spiritual 17 · Orate"}]};
+const TREE_DATA = {
+  "Rhydian": {
+    "pc": "Rhydian",
+    "generations": [
+      [
+        {
+          "id": "gp_pat",
+          "label": "Efnisien & Cigfa",
+          "status": "dead",
+          "ghost": true
+        },
+        {
+          "id": "gp_mat",
+          "label": "Elidyr & Dwywach",
+          "status": "dead",
+          "ghost": true
+        }
+      ],
+      [
+        {
+          "id": "unc_pat1",
+          "label": "Erbin",
+          "role": "Uncle · Knight",
+          "status": "alive",
+          "age": "33",
+          "parentId": "gp_pat"
+        },
+        {
+          "id": "unc_pat2",
+          "label": "Ergyriad",
+          "role": "Uncle · Knight",
+          "status": "alive",
+          "age": "26",
+          "parentId": "gp_pat"
+        },
+        {
+          "id": "aunt_pat1",
+          "label": "Goleuddydd",
+          "role": "Aunt",
+          "status": "alive",
+          "age": "31",
+          "parentId": "gp_pat"
+        },
+        {
+          "id": "aunt_pat2",
+          "label": "Gwladus",
+          "role": "Aunt (dead)",
+          "status": "dead",
+          "age": "28",
+          "parentId": "gp_pat"
+        },
+        {
+          "id": "rhy_mother",
+          "label": "Eithne",
+          "status": "dead",
+          "ghost": true,
+          "parentId": "gp_mat",
+          "ismother": true
+        },
+        {
+          "id": "uwain",
+          "label": "Iorwerth",
+          "role": "Father · Knight",
+          "status": "unknown",
+          "isfather": true,
+          "note": "Whereabouts unknown"
+        },
+        {
+          "id": "hywel_u",
+          "label": "Hywel",
+          "role": "Maternal Uncle · Knight",
+          "status": "alive",
+          "age": "37",
+          "parentId": "gp_mat"
+        },
+        {
+          "id": "unc_mat1",
+          "label": "Eudaf",
+          "role": "Uncle · Knight (dead)",
+          "status": "dead",
+          "parentId": "gp_mat"
+        },
+        {
+          "id": "aunt_mat1",
+          "label": "Gwledyr",
+          "role": "Aunt (dead)",
+          "status": "dead",
+          "age": "30",
+          "parentId": "gp_mat"
+        },
+        {
+          "id": "dinan",
+          "label": "Dinan",
+          "role": "Maternal Uncle · Knight",
+          "status": "alive",
+          "age": "41",
+          "parentId": "gp_mat"
+        },
+        {
+          "id": "unc_mat2",
+          "label": "Ffernfael",
+          "role": "Uncle · Knight",
+          "status": "alive",
+          "age": "45",
+          "parentId": "gp_mat"
+        },
+        {
+          "id": "unc_mat3",
+          "label": "Garbonian",
+          "role": "Uncle · Knight",
+          "status": "dead",
+          "age": "45",
+          "parentId": "gp_mat"
+        }
+      ],
+      [
+        {
+          "id": "vaddon",
+          "label": "Vaddon",
+          "role": "Paternal Cousin · Squire",
+          "status": "alive",
+          "age": "23",
+          "parentId": "unc_pat1"
+        },
+        {
+          "id": "cous_f1",
+          "label": "Hefina",
+          "status": "alive",
+          "age": "11",
+          "parentId": "unc_pat1"
+        },
+        {
+          "id": "cous_f2",
+          "label": "Muirenn",
+          "status": "alive",
+          "age": "9",
+          "parentId": "unc_pat2"
+        },
+        {
+          "id": "cous_f3",
+          "label": "Olwen",
+          "status": "alive",
+          "age": "8",
+          "parentId": "unc_pat2"
+        },
+        {
+          "id": "cous_f5",
+          "label": "Rhiannon",
+          "status": "alive",
+          "age": "2",
+          "parentId": "unc_pat2"
+        },
+        {
+          "id": "cous_f4",
+          "label": "Ragnell",
+          "status": "alive",
+          "age": "6",
+          "parentId": "aunt_pat1"
+        },
+        {
+          "id": "ryrid",
+          "label": "Ryrid",
+          "role": "Paternal Cousin",
+          "status": "alive",
+          "age": "4",
+          "parentId": "aunt_pat1"
+        },
+        {
+          "id": "pc",
+          "label": "Rhydian",
+          "role": "PC Knight",
+          "status": "alive",
+          "age": "26",
+          "pc": true
+        },
+        {
+          "id": "heledd",
+          "label": "Heledd",
+          "role": "Wife",
+          "status": "alive",
+          "age": "21",
+          "note": "Courageous but reckless",
+          "spouseOf": "pc"
+        },
+        {
+          "id": "cous_m1",
+          "label": "Rianon",
+          "status": "alive",
+          "age": "10",
+          "parentId": "unc_mat1"
+        },
+        {
+          "id": "cous_m2",
+          "label": "Tangwen",
+          "status": "alive",
+          "age": "11",
+          "parentId": "hywel_u"
+        },
+        {
+          "id": "cous_m3",
+          "label": "Deilwen",
+          "status": "alive",
+          "age": "9",
+          "parentId": "hywel_u"
+        },
+        {
+          "id": "cous_m4",
+          "label": "Meinir",
+          "status": "alive",
+          "age": "7",
+          "parentId": "hywel_u"
+        },
+        {
+          "id": "cous_mf5",
+          "label": "Tudful",
+          "status": "alive",
+          "age": "21",
+          "parentId": "dinan"
+        },
+        {
+          "id": "gwenwyn",
+          "label": "Gwenwyn",
+          "role": "Maternal Cousin",
+          "status": "dead",
+          "age": "22",
+          "parentId": "dinan"
+        },
+        {
+          "id": "gromer",
+          "label": "Gromer",
+          "role": "Maternal Cousin · Squire",
+          "status": "alive",
+          "age": "21",
+          "parentId": "dinan"
+        },
+        {
+          "id": "ifan",
+          "label": "Ifan",
+          "role": "Maternal Cousin · Squire",
+          "status": "alive",
+          "age": "19",
+          "parentId": "unc_mat3"
+        }
+      ],
+      [
+        {
+          "id": "cattegirn",
+          "label": "Cattegirn",
+          "role": "Son",
+          "status": "alive",
+          "age": "2",
+          "parentId": "pc"
+        },
+        {
+          "id": "dau1",
+          "label": "Aeres",
+          "status": "alive",
+          "age": "0",
+          "parentId": "pc"
+        },
+        {
+          "id": "son2c",
+          "label": "Glast",
+          "status": "alive",
+          "age": "0",
+          "parentId": "pc"
+        }
+      ]
+    ],
+    "entourage": [],
+    "manors": []
+  },
+  "Gwegon": {
+    "pc": "Gwegon",
+        "generations": [
+      [
+        {
+          "id": "gp_pat",
+          "label": "Paternal\nGrandparents",
+          "status": "dead",
+          "ghost": true
+        },
+        {
+          "id": "gp_mat",
+          "label": "Maternal\nGrandparents",
+          "status": "dead",
+          "ghost": true
+        }
+      ],
+      [
+        {
+          "id": "great_unc_pat",
+          "label": "Maelgwn",
+          "role": "Great-Uncle · Knight",
+          "status": "alive",
+          "age": "83",
+          "glory": "8420",
+          "parentId": "gp_pat"
+        },
+        {
+          "id": "gwe_father",
+          "label": "Gwgawn",
+          "role": "Father · Knight",
+          "status": "alive",
+          "age": "47",
+          "parentId": "gp_pat",
+          "isfather": true
+        },
+        {
+          "id": "gwe_mother",
+          "label": "Glesni",
+          "role": "Mother",
+          "status": "alive",
+          "age": "44",
+          "ismother": true
+        },
+        {
+          "id": "pat_uncles_stub",
+          "label": "5 Paternal\nUncles & Aunts",
+          "role": "…more",
+          "status": "alive",
+          "ghost": true,
+          "parentId": "great_unc_pat"
+        },
+        {
+          "id": "unc_cyngar",
+          "label": "Cyngar",
+          "role": "Maternal Uncle · Knight",
+          "status": "alive",
+          "parentId": "gp_mat"
+        },
+        {
+          "id": "mat_uncles_stub",
+          "label": "4 Maternal\nUncles & Aunts",
+          "role": "…more",
+          "status": "alive",
+          "ghost": true,
+          "parentId": "gp_mat"
+        },
+        {
+          "id": "aunt_j",
+          "label": "Gwaeddan",
+          "role": "Maternal Aunt",
+          "status": "dead",
+          "age": "43",
+          "parentId": "gp_mat",
+          "note": "Died 490 · Decrepitude"
+        }
+      ],
+      [
+        {
+          "id": "marchlew",
+          "label": "Marchlew",
+          "role": "Brother · Knight",
+          "status": "alive",
+          "age": "23",
+          "glory": "500"
+        },
+        {
+          "id": "pc",
+          "label": "Gwegon",
+          "role": "PC Knight",
+          "status": "alive",
+          "age": "27",
+          "pc": true
+        },
+        {
+          "id": "adwen",
+          "label": "Lady Adwen",
+          "role": "Wife",
+          "status": "alive",
+          "spouseOf": "pc",
+          "glory": 740
+        },
+        {
+          "id": "anarawd",
+          "label": "Anarawd",
+          "role": "Concubine · Sister of Sir Padern",
+          "status": "alive",
+          "age": "26",
+          "spouseOf": "pc",
+          "note": "Fear (Elves)"
+        },
+        {
+          "id": "pat_cousins_stub",
+          "label": "~20 Paternal\nCousins",
+          "role": "…more",
+          "status": "alive",
+          "ghost": true,
+          "parentId": "pat_uncles_stub"
+        },
+        {
+          "id": "mat_cousins_stub",
+          "label": "~15 Maternal\nCousins",
+          "role": "…more",
+          "status": "alive",
+          "ghost": true,
+          "parentId": "mat_uncles_stub"
+        }
+      ],
+      [
+        {
+          "id": "anarawd_dau1",
+          "label": "(unnamed)",
+          "role": "Illegitimate Daughter of Anarawd",
+          "status": "alive",
+          "age": "0",
+          "parentId": "pc",
+          "illegitimate": true,
+          "note": "Born 490 · Healthy girl · Mother: Anarawd"
+        }
+      ]
+    ],
+"entourage": [
+      {
+        "label": "Wmffre",
+        "role": "Ermit (friend of the Huns)",
+        "status": "alive",
+        "age": "55+"
+      },
+      {
+        "label": "Brynn",
+        "role": "Fashion Advisor",
+        "status": "alive",
+        "note": "Hates Orkneys"
+      },
+      {
+        "label": "Aswine",
+        "role": "Companion",
+        "status": "alive"
+      },
+      {
+        "label": "Syr Ricerch",
+        "role": "Knight of Shrewton (Demesne)",
+        "status": "alive",
+        "note": "Honest but aggressive"
+      },
+      {
+        "label": "Syr Clydno",
+        "role": "Knight of Allington (Enfeoffed)",
+        "status": "alive",
+        "note": "Generous but cowardly"
+      }
+    ],
+    "manors": [
+      {
+        "label": "Allington",
+        "role": "Demesne Manor",
+        "note": "Syr Clydno — income: harvest roll − 8£"
+      },
+      {
+        "label": "Shrewton",
+        "role": "Enfeoffed Manor",
+        "note": "Sir Marchlew — owes military service"
+      }
+    ]
+  },
+  "Timotheus": {
+    "pc": "Timotheus",
+    "generations": [
+      [
+        {
+          "id": "gp_pat",
+          "label": "Macsen & Rhoswen",
+          "status": "dead",
+          "ghost": true
+        },
+        {
+          "id": "gp_mat",
+          "label": "Madawg & Siwan",
+          "status": "dead",
+          "ghost": true
+        }
+      ],
+      [
+        {
+          "id": "tim_father",
+          "label": "Crautreic",
+          "role": "Father · Knight (dead)",
+          "status": "dead",
+          "ghost": true,
+          "parentId": "gp_pat",
+          "isfather": true
+        },
+        {
+          "id": "unc_aeron",
+          "label": "Aeron",
+          "role": "Paternal Uncle · Knight",
+          "status": "alive",
+          "age": "44",
+          "glory": "1420",
+          "parentId": "gp_pat"
+        },
+        {
+          "id": "tim_mother",
+          "label": "Cynfarch",
+          "role": "Mother",
+          "status": "alive",
+          "age": "40",
+          "note": "Eligible",
+          "parentId": "gp_mat",
+          "ismother": true
+        },
+        {
+          "id": "unc_deort",
+          "label": "Deort",
+          "role": "Maternal Uncle · Knight",
+          "status": "alive",
+          "age": "34",
+          "glory": "1222",
+          "parentId": "gp_mat"
+        },
+        {
+          "id": "unc_owain",
+          "label": "Owain",
+          "role": "Maternal Uncle · Knight",
+          "status": "alive",
+          "age": "31",
+          "glory": "1120",
+          "parentId": "gp_mat"
+        },
+        {
+          "id": "aunt_tryamour",
+          "label": "Tryamour",
+          "role": "Maternal Aunt",
+          "status": "alive",
+          "age": "29",
+          "note": "Widow, flirting",
+          "parentId": "gp_mat"
+        },
+        {
+          "id": "aunt_melior",
+          "label": "Melior",
+          "role": "Maternal Aunt",
+          "status": "alive",
+          "age": "24",
+          "note": "Fear of beasts",
+          "parentId": "gp_mat"
+        },
+        {
+          "id": "unc_nwython",
+          "label": "Nwython",
+          "role": "Mercenary (illegit.)",
+          "status": "dead",
+          "age": "24",
+          "glory": "342",
+          "parentId": "gp_mat"
+        }
+      ],
+      [
+        {
+          "id": "elian",
+          "label": "Elian",
+          "role": "Paternal Cousin · Squire",
+          "status": "alive",
+          "age": "23",
+          "parentId": "unc_aeron"
+        },
+        {
+          "id": "pc",
+          "label": "Timotheus",
+          "role": "PC Knight",
+          "status": "alive",
+          "age": "26",
+          "pc": true
+        },
+        {
+          "id": "keepa",
+          "label": "Keepa",
+          "role": "Sister",
+          "status": "alive",
+          "age": "20"
+        },
+        {
+          "id": "bro18",
+          "label": "Maeon",
+          "role": "Brother · Squire",
+          "status": "alive",
+          "age": "19"
+        },
+        {
+          "id": "bro16",
+          "label": "Meilyr",
+          "role": "Brother · Squire",
+          "status": "alive",
+          "age": "17"
+        },
+        {
+          "id": "bro15",
+          "label": "Meurig",
+          "role": "Brother · Squire",
+          "status": "alive",
+          "age": "16"
+        },
+        {
+          "id": "bro12",
+          "label": "Mynyddog",
+          "role": "Brother",
+          "status": "alive",
+          "age": "13"
+        },
+        {
+          "id": "sis9",
+          "label": "Catrin",
+          "role": "Sister",
+          "status": "alive",
+          "age": "10"
+        },
+        {
+          "id": "owain_illeg",
+          "label": "Mynyw",
+          "role": "Son of Owain",
+          "status": "alive",
+          "age": "8",
+          "parentId": "unc_owain"
+        },
+        {
+          "id": "indeg",
+          "label": "Lady Indeg",
+          "role": "Wife",
+          "status": "alive",
+          "spouseOf": "pc",
+          "glory": 4140
+        }
+      ],
+      [
+        {
+          "id": "son4",
+          "label": "Nantcol",
+          "role": "Illegitimate Son",
+          "status": "alive",
+          "age": "4",
+          "parentId": "pc",
+          "illegitimate": true
+        },
+        {
+          "id": "son3",
+          "label": "Olwydd",
+          "role": "Illegitimate Son",
+          "status": "alive",
+          "age": "3",
+          "parentId": "pc",
+          "illegitimate": true
+        },
+        {
+          "id": "son2c",
+          "label": "Peredur",
+          "role": "Illegitimate Son",
+          "status": "alive",
+          "age": "2",
+          "parentId": "pc",
+          "illegitimate": true
+        },
+        {
+          "id": "dau4",
+          "label": "Elan",
+          "role": "Illegitimate Daughter",
+          "status": "alive",
+          "age": "4",
+          "parentId": "pc",
+          "illegitimate": true
+        },
+        {
+          "id": "dau3",
+          "label": "Gwerfyl",
+          "role": "Illegitimate Daughter",
+          "status": "alive",
+          "age": "3",
+          "parentId": "pc",
+          "illegitimate": true
+        },
+        {
+          "id": "dau2",
+          "label": "Madryn",
+          "role": "Illegitimate Daughter",
+          "status": "alive",
+          "age": "2",
+          "parentId": "pc",
+          "illegitimate": true
+        },
+        {
+          "id": "moried",
+          "label": "Moried",
+          "role": "Son of Keepa",
+          "status": "alive",
+          "age": "0",
+          "parentId": "keepa"
+        }
+      ]
+    ],
+    "entourage": [
+      {
+        "label": "Nai",
+        "role": "Monk · Scriptorium",
+        "status": "alive",
+        "age": "47"
+      }
+    ],
+    "manors": []
+  },
+  "Agragan": {
+    "pc": "Agragan",
+    "generations": [
+      [
+        {
+          "id": "govan",
+          "label": "Govan",
+          "role": "Great Uncle · Knight",
+          "status": "alive",
+          "age": "54"
+        },
+        {
+          "id": "g_pat_f",
+          "label": "Brochfael",
+          "status": "dead",
+          "ghost": true
+        },
+        {
+          "id": "g_mat",
+          "label": "Custennin & Arianrhod",
+          "status": "dead",
+          "ghost": true
+        }
+      ],
+      [
+        {
+          "id": "sulbiu",
+          "label": "Sulbiu",
+          "role": "Uncle · Knight",
+          "status": "dead",
+          "age": "36",
+          "parentId": "govan"
+        },
+        {
+          "id": "lovel",
+          "label": "Sir Lovel",
+          "role": "Cousin · Knight",
+          "status": "alive",
+          "age": "38",
+          "parentId": "g_pat_f"
+        },
+        {
+          "id": "dagodoc",
+          "label": "Dagodoc",
+          "role": "Father · Knight",
+          "status": "dead",
+          "age": "59",
+          "glory": "2241",
+          "parentId": "g_pat_f",
+          "isfather": true
+        },
+        {
+          "id": "bodara",
+          "label": "Bodara",
+          "role": "Mother",
+          "status": "dead",
+          "age": "52",
+          "parentId": "g_mat",
+          "ismother": true
+        },
+        {
+          "id": "mat_uncle",
+          "label": "Dyfnarth",
+          "status": "alive",
+          "ghost": true,
+          "parentId": "g_mat"
+        }
+      ],
+      [
+        {
+          "id": "gilber",
+          "label": "Gilber",
+          "role": "Paternal Cousin · Squire",
+          "status": "alive",
+          "age": "21",
+          "parentId": "sulbiu"
+        },
+        {
+          "id": "eudav",
+          "label": "Sir Eudav",
+          "role": "Maternal Cousin · Knight",
+          "status": "alive",
+          "age": "30",
+          "note": "Cheated in Oratory",
+          "parentId": "mat_uncle"
+        },
+        {
+          "id": "pc",
+          "label": "Agragan",
+          "role": "PC Knight",
+          "status": "alive",
+          "age": "27",
+          "pc": true
+        },
+        {
+          "id": "gwegon_bro",
+          "label": "Gwegon",
+          "role": "Younger Brother · Squire",
+          "status": "alive",
+          "age": "23"
+        },
+        {
+          "id": "sister",
+          "label": "Branwen",
+          "status": "alive",
+          "ghost": true
+        },
+        {
+          "id": "cynedyr",
+          "label": "Sir Cynedyr",
+          "role": "Sister's Husband · Knight",
+          "status": "alive",
+          "age": "36",
+          "spouseOf": "sister",
+          "note": "Married to Branwen"
+        },
+        {
+          "id": "gwiona",
+          "label": "Lady Gwiona",
+          "role": "Wife",
+          "status": "alive",
+          "spouseOf": "pc",
+          "glory": 856
+        }
+      ],
+      [
+        {
+          "id": "robyn",
+          "label": "Robyn",
+          "role": "Personal Squire",
+          "status": "alive",
+          "age": "18",
+          "parentId": "pc"
+        },
+        {
+          "id": "dau_wales",
+          "label": "Caer",
+          "status": "alive",
+          "parentId": "pc"
+        }
+      ]
+    ],
+    "entourage": [
+      {
+        "label": "Grainne",
+        "role": "Village Midwife · Druid",
+        "status": "alive",
+        "age": "58",
+        "note": "Pagan druid"
+      },
+      {
+        "label": "Richerch",
+        "role": "Pagan Priest",
+        "status": "alive",
+        "age": "52"
+      },
+      {
+        "label": "Llemenig",
+        "role": "Chaplain",
+        "status": "alive",
+        "age": "64"
+      },
+      {
+        "label": "Sulien",
+        "role": "Miller",
+        "status": "alive"
+      },
+      {
+        "label": "Tegfan",
+        "role": "",
+        "status": "alive"
+      },
+      {
+        "label": "Gwenno",
+        "role": "Squire",
+        "status": "alive"
+      },
+      {
+        "label": "Waldema",
+        "role": "Saxon Refugee Boy",
+        "status": "alive",
+        "age": "15",
+        "note": "Looking for family near Kent"
+      }
+    ],
+    "manors": [
+      {
+        "label": "Horton",
+        "note": "Sir Rhodri · Knight (just but cruel)"
+      },
+      {
+        "label": "Tisbury",
+        "note": "Sir Tarthan · Knight (enfeoffed)"
+      },
+      {
+        "label": "Cholderton",
+        "note": "Home manor"
+      }
+    ]
+  }
+};
