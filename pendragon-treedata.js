@@ -898,4 +898,74 @@ const TREE_DATA = {
       }
     ]
   }
+,
+  "Mellyr": {
+    "pc": "Mellyr",
+    "generations": [
+      [
+        {
+          "id": "gp_pat",
+          "label": "Paternal\nGrandparents",
+          "status": "dead",
+          "ghost": true
+        }
+      ],
+      [
+        {
+          "id": "mel_father",
+          "label": "Aled",
+          "role": "Father · Knight (dead)",
+          "status": "dead",
+          "parentId": "gp_pat",
+          "isfather": true
+        },
+        {
+          "id": "mel_mother",
+          "label": "Non",
+          "role": "Mother",
+          "status": "alive",
+          "age": "43",
+          "ismother": true
+        },
+        {
+          "id": "mel_uncle",
+          "label": "Gwyn",
+          "role": "Uncle · Knight (dead)",
+          "status": "dead",
+          "parentId": "gp_pat"
+        }
+      ],
+      [
+        {
+          "id": "pc",
+          "label": "Mellyr",
+          "role": "PC Knight",
+          "status": "alive",
+          "age": "22",
+          "pc": true
+        },
+        {
+          "id": "cousins_stub",
+          "label": "3 Cousins",
+          "role": "…more",
+          "status": "alive",
+          "ghost": true,
+          "parentId": "mel_uncle"
+        }
+      ]
+    ],
+    "entourage": [
+      {
+        "label": "Bledri",
+        "role": "Squire",
+        "status": "alive"
+      }
+    ],
+    "manors": [
+      {
+        "label": "Newton Tony",
+        "note": "Home manor · Site of Famous Faerie Battle"
+      }
+    ]
+  }
 };
