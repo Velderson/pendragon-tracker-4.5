@@ -1415,6 +1415,15 @@ function ftResetView(){
 function initFamilyTreeCanvas(charName){
   ftCanvas = document.getElementById('familyTreeCanvas');
   if(!ftCanvas) return;
+  const treeData = TREE_DATA[charName];
+  if(!treeData || !treeData.generations || !treeData.generations.length){
+    ftCanvas.style.display='none';
+    const msg = document.createElement('div');
+    msg.style.cssText='font-family:Cinzel,serif;font-size:.8rem;color:#7a5a30;padding:2rem;font-style:italic';
+    msg.textContent='No family tree data recorded for '+charName+'.';
+    ftCanvas.parentElement.insertBefore(msg, ftCanvas);
+    return;
+  }
   const cont = ftCanvas.parentElement;
   ftDpr = window.devicePixelRatio || 1;
   ftW   = cont.clientWidth || 900;
