@@ -1694,7 +1694,7 @@ let RELATIONS = (()=>{
   if(saved) try { return JSON.parse(saved); } catch(e){}
   return [
     // ── Uther's Court internal
-    {id:'r1',  a:'King Uther Pendragon',  b:'Gorlois',              type:'hostile', scope:['political','personal'], label:'Uther covets Ygraine; open rivalry threatens war. In 488 Uther calls Gorlois \'the primary culprit\' and Cornwall snubbed the summons to France — escalating fast.'},
+    {id:'r1',  a:'King Uther Pendragon',  b:'Gorlois',              type:'hostile', scope:['political','personal'], label:'489: Peace made at Excalibur\'s Peace — Gorlois surrendered. Uther covets Ygraine; rivalry now uneasy truce. Gorlois holds all Cornwall to the sea.'},
     {id:'r2',  a:'King Uther Pendragon', b:'Merlin the Magician', type:'ally',   scope:['political','plot'],     label:'Uther relies on Merlin\'s counsel and magic'},
     {id:'r3',  a:'King Uther Pendragon', b:'Ulfius',            type:'ally',    scope:['political'],            label:'Ulfius is Uther\'s most loyal duke'},
     {id:'r4',  a:'King Uther Pendragon', b:'Prince Madoc',      type:'ally',    scope:['political','personal'], label:'Madoc is Uther\'s heir and champion'},
@@ -1709,7 +1709,7 @@ let RELATIONS = (()=>{
     {id:'r12', a:'Sir Hywel',            b:'Sir Jarren',        type:'rival',   scope:['personal'],             label:'Competition for glory and Roderick\'s favour'},
     {id:'r13', a:'Lady Elaine',          b:'Count Roderick',    type:'complex', scope:['personal'],             label:'Elaine\'s scandalous affairs embarrass the household'},
     // ── Cornwall vs Uther
-    {id:'r14', a:'Gorlois',              b:'King Uther Pendragon', type:'hostile', scope:['political','personal'], label:'Ancient grudge; Gorlois refuses Uther\'s court'},
+    {id:'r14', a:'Gorlois',              b:'King Uther Pendragon', type:'hostile', scope:['political','personal'], label:'489: Uneasy peace after Excalibur\'s Peace. Ancient grudge remains — Gorlois holds Cornwall, Uther holds his ambitions.'},
     {id:'r15', a:'Ygraine',               b:'King Uther Pendragon', type:'complex', scope:['personal'],       label:'Uther has shown unsettling interest in the Duchess of Cornwall'},
     // ── Saxon threat
     {id:'r16', a:'King Aelle',           b:'King Uther Pendragon', type:'hostile', scope:['political'],         label:'Aelle leads the Saxon Shore against British kings'},
@@ -1738,6 +1738,14 @@ let RELATIONS = (()=>{
     {id:'r34', a:'King Uther Pendragon',  b:'Lot',                  type:'rival',   scope:['political'],            label:'Lot avoided battle in the north in 488; Uther is aware and suspicious of his loyalty'},
     {id:'r35', a:'King Uther Pendragon',  b:'King Claudas',         type:'hostile', scope:['political','military'], label:'Britain\'s 488 campaign in Frankland is directed against Claudas\'s forces; a formidable enemy who has never lost a battle'},
     {id:'r36', a:'Count Roderick',        b:'Mellyr',               type:'vassal',  scope:['political','affairs'],  label:'PC Mellyr holds Newton Tony under Roderick'},
+    // ── 489 developments
+    {id:'r37', a:'Sir Padern',            b:'Gwegon',               type:'hostile', scope:['personal'],             label:'Padern wants to kill Gwegon — his sister Anarawd was taken as concubine. Will wait for the right moment.'},
+    {id:'r38', a:'Sygarius',              b:'Rhydian',              type:'hostile', scope:['personal'],             label:'Sygarius hates Rhydian. Will plot for years.'},
+    {id:'r39', a:'Sir Blains',            b:'Gwegon',               type:'hostile', scope:['military'],             label:'Blains raided Broughton (489). Ongoing Silchester border aggression.'},
+    {id:'r40', a:'Sir Blains',            b:'Timotheus',            type:'hostile', scope:['military'],             label:'Blains raided Laverstock (489). Ongoing Silchester border aggression.'},
+    {id:'r41', a:'Anarawd',              b:'Gwegon',               type:'complex', scope:['personal'],             label:'Anarawd is Gwegon\'s concubine. Her brother Sir Padern is secretly an enemy.'},
+    {id:'r42', a:'Count Roderick',        b:'Timotheus',            type:'ally',    scope:['personal'],             label:'Roderick impressed by Timotheus\'s battle awareness at Excalibur\'s Peace — critted battle roll, warned Roderick of danger in the trees.'},
+    {id:'r43', a:'Gorlois',              b:'King Uther Pendragon', type:'complex', scope:['political','personal'], label:'489: Peace made at Excalibur\'s Peace — Gorlois surrendered in exchange for all Cornwall lands to the sea. Hate may soften over time.'},
   ];
 })();
 
@@ -1993,7 +2001,7 @@ function renderConflicts(){
       Gwegon:    [{manor:'Shrewton',   holder:'Sir Marchlew',note:'Enfeoffed manor'},
                   {manor:'Allington',  holder:'Sir Clydno',  note:'Demesne manor'}],
       Timotheus: [{manor:'Tidcombe',   holder:'Syr Cynwal',  note:'Enfeoffed manor'},
-                  {manor:'Fosbury',    holder:'Syr Gwair',   note:'Enfeoffed manor'}],
+                  {manor:'Fosbury',    holder:'Elian (cousin)',   note:'Gifted by Timotheus 489 · heir until Timotheus has a son'}],
       Rhydian:   [],
       Mellyr:    [],
     };
@@ -2643,7 +2651,7 @@ const MANOR_DATA = {
         name: 'Stapleford',
         type: 'Demesne',
         bonus: 'Single Plinth',
-        improvements: ['Dovecote'],
+        improvements: ['Dovecote', 'Sheep Herd'],
         knight: null,
         notes: 'Home manor',
         history: [
@@ -2651,6 +2659,7 @@ const MANOR_DATA = {
           {year:486, harvest:12, harvestResult:'Good',    stewardship:1, improvIncome:0, income:12, lifestyle:'Normal', lifestyleCost:8, improvMaint:0, family:0, improvBuild:5, misc:0, final:4, notes:'Good year, great weather. No raids.'},
           {year:487, harvest:12, harvestResult:'Good',    stewardship:2, improvIncome:2, income:16, lifestyle:'Rich',   lifestyleCost:12, improvMaint:3, family:1, improvBuild:0, misc:0, final:2, notes:'Good year. Dovecote completed.'},
           {year:488, harvest:7,  harvestResult:'Bad',     stewardship:0, improvIncome:2, income:9,  lifestyle:'Normal', lifestyleCost:8, improvMaint:3, family:1, improvBuild:0, misc:0, final:-2, notes:'Bad year, bad weather. One raid.'},
+          {year:489, harvest:9,  harvestResult:'Average', stewardship:0, improvIncome:2, income:11, lifestyle:'Rich',   lifestyleCost:12, improvMaint:1, family:1, improvBuild:0, misc:0, final:-3, notes:'Normal year, average weather. No raids. Sheep Herd completed (D4+2 income from 490).'},
         ]
       }
     ]
@@ -2663,7 +2672,7 @@ const MANOR_DATA = {
         name: 'Broughton',
         type: 'Demesne',
         bonus: 'Hermitage — costs 0.5£/year (Pagan or Christian)',
-        improvements: ['Dovecote'],
+        improvements: ['Dovecote', 'Orchard', 'Stone Wall'],
         knight: null,
         notes: 'Home manor. Note: Lord Roderick\'s 2£ annual allowance has ended.',
         history: [
@@ -2671,6 +2680,7 @@ const MANOR_DATA = {
           {year:486, harvest:12, harvestResult:'Great',   stewardship:0,   improvIncome:0, income:14,   lifestyle:'Normal', lifestyleCost:8, improvMaint:0, family:0, improvBuild:0,   misc:-0.05, final:5.5,  notes:'Good year, great weather. No raids. Lord allowance 2£.'},
           {year:487, harvest:12, harvestResult:'Great',   stewardship:0,   improvIncome:0, income:14,   lifestyle:'Normal', lifestyleCost:8, improvMaint:0, family:0, improvBuild:5,   misc:-1.5,  final:0.5,  notes:'Good year. Lord allowance 2£. Hermit + fashion 1.5£.'},
           {year:488, harvest:7,  harvestResult:'Bad',     stewardship:0,   improvIncome:2, income:11,   lifestyle:'Normal', lifestyleCost:8, improvMaint:1, family:0, improvBuild:0,   misc:-1.5,  final:0,    notes:'Bad year. Raid (-3 lots). Lord allowance 2£. Hermit + fashion -1.5£.'},
+          {year:489, harvest:9,  harvestResult:'Average', stewardship:1,   improvIncome:2, income:12,   lifestyle:'Normal', lifestyleCost:8, improvMaint:1, family:1, improvBuild:0,   misc:-1.5,  final:0.5,  notes:'Normal year. No raids. Hermit + fashion -1.5£. Orchard + Stone Wall completed (income from 490: 2+D3+1).'},
         ]
       },
       {
@@ -2701,7 +2711,7 @@ const MANOR_DATA = {
         name: 'Laverstock',
         type: 'Demesne',
         bonus: 'Haunted Graveyard',
-        improvements: ['Scriptorium', 'Dovecote'],
+        improvements: ['Scriptorium', 'Dovecote', 'Herb Garden'],
         knight: null,
         notes: 'Scriptorium provides scholarly income. Haunted graveyard is a local oddity.',
         history: [
@@ -2709,6 +2719,7 @@ const MANOR_DATA = {
           {year:486, harvest:12, harvestResult:'Good',    stewardship:0, improvIncome:0,   income:12, lifestyle:'Normal', lifestyleCost:8,   improvMaint:0,   family:0, improvBuild:5, misc:0, final:4, notes:'Good year. Scriptorium construction begins.'},
           {year:487, harvest:12, harvestResult:'Good',    stewardship:0, improvIncome:5,   income:17, lifestyle:'Normal', lifestyleCost:8,   improvMaint:3,   family:0, improvBuild:5, misc:0, final:1, notes:'Good year. Scriptorium complete (+5£ income). Dovecote begun.'},
           {year:488, harvest:7,  harvestResult:'Bad',     stewardship:0, improvIncome:6,   income:13, lifestyle:'Normal', lifestyleCost:8,   improvMaint:4,   family:0, improvBuild:0, misc:0, final:1, notes:'Bad year, bad weather. One raid.'},
+          {year:489, harvest:7,  harvestResult:'Average', stewardship:1, improvIncome:7,   income:17, lifestyle:'Rich',   lifestyleCost:12,  improvMaint:4,   family:1, improvBuild:0, misc:2, final:1, notes:'Average year. Indeg trading +2£. Herb Garden completed (income from 490: 1D3+1D4+1+2).'},
         ]
       },
       {
@@ -2725,8 +2736,8 @@ const MANOR_DATA = {
         type: 'Enfeoffed (via Indeg)',
         bonus: null,
         improvements: [],
-        knight: 'Syr Gwair',
-        notes: 'Owes military service.',
+        knight: 'Elian (cousin of Timotheus)',
+        notes: 'Gifted to Elian by Timotheus (489). Timotheus wrote a will naming Elian heir until Timotheus has a legitimate son. Syr Gwair remains as enfeoffed knight under Elian.',
         history: []
       }
     ]
@@ -3042,6 +3053,23 @@ function renderManorMapSVG(charName) {
         <text x="${x}" y="${y+22}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9" fill="#3a1a06">Vineyard</text>
       </g>`;
     }
+    if (imp === 'Stone Wall') {
+      // Stone perimeter wall — larger footprint, crenellated top, surrounds an area
+      return `<g id="${svgId}-${key}" ${dataAttrs}>
+        <rect x="${x-28}" y="${y-20}" width="56" height="38" rx="2" fill="none" stroke="#8a7a60" stroke-width="3"/>
+        <rect x="${x-28}" y="${y-20}" width="56" height="8" rx="1" fill="#9a8a6a" stroke="#6a5a40" stroke-width="0.8"/>
+        <rect x="${x-28}" y="${y+10}" width="56" height="8" rx="1" fill="#9a8a6a" stroke="#6a5a40" stroke-width="0.8"/>
+        <rect x="${x-28}" y="${y-20}" width="8" height="38" rx="1" fill="#9a8a6a" stroke="#6a5a40" stroke-width="0.8"/>
+        <rect x="${x+20}" y="${y-20}" width="8" height="38" rx="1" fill="#9a8a6a" stroke="#6a5a40" stroke-width="0.8"/>
+        <rect x="${x-26}" y="${y-26}" width="7" height="8" rx="1" fill="#b8a870" stroke="#6a5a40" stroke-width="0.7"/>
+        <rect x="${x-14}" y="${y-26}" width="7" height="8" rx="1" fill="#b8a870" stroke="#6a5a40" stroke-width="0.7"/>
+        <rect x="${x-2}" y="${y-26}" width="7" height="8" rx="1" fill="#b8a870" stroke="#6a5a40" stroke-width="0.7"/>
+        <rect x="${x+10}" y="${y-26}" width="7" height="8" rx="1" fill="#b8a870" stroke="#6a5a40" stroke-width="0.7"/>
+        <rect x="${x+22}" y="${y-26}" width="7" height="8" rx="1" fill="#b8a870" stroke="#6a5a40" stroke-width="0.7"/>
+        <rect x="${x-8}" y="${y-4}" width="16" height="22" rx="1" fill="#2a1808" stroke="#6a5a40" stroke-width="0.7"/>
+        <text x="${x}" y="${y+34}" text-anchor="middle" font-family="'Crimson Pro',serif" font-size="9" fill="#3a1a06">Stone Wall</text>
+      </g>`;
+    }
     // Generic fallback — plain stone building
     return `<g id="${svgId}-${key}" ${dataAttrs}>
       <rect x="${x-14}" y="${y-16}" width="28" height="26" rx="1" fill="#b8a870" stroke="#6a5020" stroke-width="0.9"/>
@@ -3054,9 +3082,15 @@ function renderManorMapSVG(charName) {
   const svgId = 'msv_' + charName;
 
   // Position improvements in a loose cluster near the hall
+  // Stone Wall gets a special fixed position centred on the hall (it wraps around it)
+  let clusterIdx = 0;
   const improvPositions = improvements.map((imp, i) => {
-    const col = i % 3;
-    const row = Math.floor(i / 3);
+    if (imp === 'Stone Wall') {
+      return { imp, x: hallX, y: hallY };
+    }
+    const col = clusterIdx % 3;
+    const row = Math.floor(clusterIdx / 3);
+    clusterIdx++;
     return { imp, x: hallX + 80 + col * 58, y: hallY - 30 + row * 60 };
   });
   const improvSymbols = improvPositions.map(({imp,x,y}) => improvBuilding(imp, x, y, svgId)).join('');
@@ -3824,7 +3858,7 @@ function renderEstatesPanel(charName) {
   });
 
   // ── HOME MANOR CARD (full featured) ──
-  const IMPROV_ICONS = {'Dovecote':'🕊','Scriptorium':'📜','Apiary':'🍯','Observatory':'🔭','Brewery':'🍺','Carpenter Shop':'🪚','Coneygarth':'🐇','Dairy':'🥛','Ferry':'⛵','Fish Pond':'🐟','Gambling House':'🎲','Herb Garden':'🌿','Horse Herd (<530)':'🐴','Horse Herd (530+)':'🐴','Inn':'🏠','Jeweller':'💎','Logging Station':'🪵','Lumber Mill':'🪵','Olive Grove':'🫒','Orchard':'🍎','Salt Evaporator':'🧂','Sheep Herd':'🐑','Vineyard':'🍇','Winery':'🍷','Winery, Fine':'🍷'};
+  const IMPROV_ICONS = {'Dovecote':'🕊','Scriptorium':'📜','Apiary':'🍯','Observatory':'🔭','Brewery':'🍺','Carpenter Shop':'🪚','Coneygarth':'🐇','Dairy':'🥛','Ferry':'⛵','Fish Pond':'🐟','Gambling House':'🎲','Herb Garden':'🌿','Horse Herd (<530)':'🐴','Horse Herd (530+)':'🐴','Inn':'🏠','Jeweller':'💎','Logging Station':'🪵','Lumber Mill':'🪵','Olive Grove':'🫒','Orchard':'🍎','Salt Evaporator':'🧂','Sheep Herd':'🐑','Vineyard':'🍇','Winery':'🍷','Winery, Fine':'🍷','Stone Wall':'🧱'};
   const BONUS_ICONS = {'Single Plinth':'🗿','Hermitage':'⛪','Haunted Graveyard':'💀','Site of a famous battle against Romans':'⚔'};
 
   let homeCard = '';
@@ -4070,7 +4104,7 @@ function renderEconomics() {
       </tr>`;
     }).join('');
 
-    const IMPROV_ICONS2 = {'Dovecote':'🕊','Scriptorium':'📜','Apiary':'🍯','Observatory':'🔭','Brewery':'🍺','Carpenter Shop':'🪚','Coneygarth':'🐇','Dairy':'🥛','Ferry':'⛵','Fish Pond':'🐟','Gambling House':'🎲','Herb Garden':'🌿','Horse Herd (<530)':'🐴','Horse Herd (530+)':'🐴','Inn':'🏠','Jeweller':'💎','Logging Station':'🪵','Lumber Mill':'🪵','Olive Grove':'🫒','Orchard':'🍎','Salt Evaporator':'🧂','Sheep Herd':'🐑','Vineyard':'🍇','Winery':'🍷','Winery, Fine':'🍷'};
+    const IMPROV_ICONS2 = {'Dovecote':'🕊','Scriptorium':'📜','Apiary':'🍯','Observatory':'🔭','Brewery':'🍺','Carpenter Shop':'🪚','Coneygarth':'🐇','Dairy':'🥛','Ferry':'⛵','Fish Pond':'🐟','Gambling House':'🎲','Herb Garden':'🌿','Horse Herd (<530)':'🐴','Horse Herd (530+)':'🐴','Inn':'🏠','Jeweller':'💎','Logging Station':'🪵','Lumber Mill':'🪵','Olive Grove':'🫒','Orchard':'🍎','Salt Evaporator':'🧂','Sheep Herd':'🐑','Vineyard':'🍇','Winery':'🍷','Winery, Fine':'🍷','Stone Wall':'🧱'};
     const improvBadges = (manor.improvements||[]).length ? `
       <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:.8rem">
         ${(manor.improvements||[]).map(imp => {
