@@ -945,6 +945,22 @@ const TREE_DATA = {
           "pc": true
         },
         {
+          "id": "mel_wife",
+          "label": "Nesta",
+          "role": "Wife · Lady",
+          "status": "alive",
+          "age": "19",
+          "iswife": true
+        },
+        {
+          "id": "mel_daughter1",
+          "label": "Daughter",
+          "role": "Infant · b.489",
+          "status": "alive",
+          "age": "0",
+          "parentId": "pc"
+        },
+        {
           "id": "cousins_stub",
           "label": "3 Cousins",
           "role": "…more",
